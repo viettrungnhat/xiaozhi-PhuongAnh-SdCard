@@ -44,19 +44,20 @@ class VirtualAssistant:
         Returns:
             Dictionary with 'status', 'message', and optional 'data'.
         """
-        command = command.strip().lower()
+        command = command.strip()
+        command_lower = command.lower()
         
-        if command in ["help", "trợ giúp", "giúp đỡ"]:
+        if command_lower in ["help", "trợ giúp", "giúp đỡ"]:
             return self._help_command()
-        elif command in ["storage", "bộ nhớ", "lưu trữ"]:
+        elif command_lower in ["storage", "bộ nhớ", "lưu trữ"]:
             return self._storage_info_command()
-        elif command in ["list", "danh sách", "files"]:
+        elif command_lower in ["list", "danh sách", "files"]:
             return self._list_files_command()
-        elif command.startswith("read ") or command.startswith("đọc "):
+        elif command_lower.startswith("read ") or command_lower.startswith("đọc "):
             return self._read_file_command(command)
-        elif command.startswith("write ") or command.startswith("viết "):
+        elif command_lower.startswith("write ") or command_lower.startswith("viết "):
             return self._write_file_command(command)
-        elif command.startswith("delete ") or command.startswith("xóa "):
+        elif command_lower.startswith("delete ") or command_lower.startswith("xóa "):
             return self._delete_file_command(command)
         else:
             return {
