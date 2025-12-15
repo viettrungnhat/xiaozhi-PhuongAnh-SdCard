@@ -9,8 +9,7 @@ setup(
     package_dir={"": "src"},
     python_requires=">=3.7",
     install_requires=[
-        "psutil>=5.9.0",
-        "pathlib>=1.0.1",
+        # All dependencies are part of Python standard library
     ],
     entry_points={
         "console_scripts": [

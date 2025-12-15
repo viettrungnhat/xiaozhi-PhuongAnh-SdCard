@@ -1,2 +1,3 @@
-psutil>=5.9.0
-pathlib>=1.0.1
+# No external dependencies required
+# All dependencies are part of Python standard library (>=3.7)
+
