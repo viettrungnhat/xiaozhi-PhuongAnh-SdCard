@@ -421,13 +421,31 @@ void Application::Start() {
     // Update the status bar immediately to show the network state
     display->UpdateStatusBar(true);
 
-    // Check for new assets version
-    display->SetChatMessage("system", "Checking updates...");
-    CheckAssetsVersion();
-
-    // Check for new firmware version or get the MQTT broker address
+    // Check if we should skip OTA checks at startup (for offline mode)
+    // Skip OTA check if WiFi is not connected - allows offline operation
+    bool wifi_connected = WifiStation::GetInstance().IsConnected();
+    
     Ota ota;
-    CheckNewVersion(ota);
+    
+    if (wifi_connected) {
+        // Check for new assets version
+        display->SetChatMessage("system", "Checking updates...");
+        CheckAssetsVersion();
+
+        // Check for new firmware version or get the MQTT broker address
+        CheckNewVersion(ota);
+    } else {
+        ESP_LOGI(TAG, "WiFi not connected - entering offline mode");
+        display->SetChatMessage("system", "Chế độ Offline - Không có WiFi");
+        display->SetEmotion("neutral");
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        
+        // Mark as done to allow basic operation
+        xEventGroupSetBits(event_group_, MAIN_EVENT_CHECK_NEW_VERSION_DONE);
+        
+        display->SetChatMessage("system", "Sẵn sàng phát nhạc & cảnh báo offline");
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 
     // Start the OTA server
     auto& ota_server = ota::OtaServer::GetInstance();
