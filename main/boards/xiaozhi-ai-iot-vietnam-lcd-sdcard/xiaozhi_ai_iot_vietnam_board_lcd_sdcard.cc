@@ -15,6 +15,17 @@
 #include "music/esp32_radio.h"
 #include "music/esp32_music.h"
 
+// CAN Bus integration for Kia Morning 2017 Si
+#include "canbus/canbus_driver.h"
+#include "canbus/kia_can_protocol.h"
+#include "canbus/vehicle_assistant.h"
+#include "canbus/relay_controller.h"
+
+// Offline mode and music button
+#include "offline/offline_audio_player.h"
+#include "offline/offline_audio_assets.h"
+#include "offline/music_button.h"
+
 #include <wifi_station.h>
 #include <esp_log.h>
 #include <driver/i2c_master.h>
@@ -257,6 +268,210 @@ private:
         static LampController lamp(LAMP_GPIO);
     }
 
+    // ========================================================================
+    // Relay Initialization for Vehicle Control (Trunk, AC, etc.)
+    // ========================================================================
+    void InitializeRelays() {
+#ifdef CONFIG_ENABLE_RELAY_CONTROL
+        ESP_LOGI(TAG, "========================================");
+        ESP_LOGI(TAG, "Initializing Vehicle Relay Control");
+        ESP_LOGI(TAG, "Trunk Relay: GPIO%d", RELAY_TRUNK_GPIO);
+#ifdef RELAY_AC_GPIO
+        ESP_LOGI(TAG, "AC Relay: GPIO%d", RELAY_AC_GPIO);
+#endif
+        ESP_LOGI(TAG, "========================================");
+        
+        // Khởi tạo VehicleRelayManager (singleton)
+        relay::VehicleRelayManager::GetInstance();
+        
+        ESP_LOGI(TAG, "Vehicle Relay Control initialized successfully!");
+#else
+        ESP_LOGI(TAG, "Vehicle Relay Control DISABLED");
+#endif
+    }
+
+    // ========================================================================
+    // CAN Bus Initialization for Kia Morning 2017 Si
+    // Using SN65HVD230 module connected to GPIO17 (TX) and GPIO8 (RX)
+    // ========================================================================
+    void InitializeCanBus() {
+#ifdef CONFIG_ENABLE_CAN_BUS
+        ESP_LOGI(TAG, "========================================");
+        ESP_LOGI(TAG, "Initializing CAN Bus for Kia Morning 2017");
+        ESP_LOGI(TAG, "TX: GPIO%d, RX: GPIO%d, Speed: %d kbps", 
+                 CAN_TX_GPIO, CAN_RX_GPIO, CAN_SPEED_KBPS);
+        ESP_LOGI(TAG, "========================================");
+        
+        // Initialize CAN bus driver
+        canbus::CanBusDriver& can_driver = canbus::CanBusDriver::GetInstance();
+        if (!can_driver.Initialize(CAN_TX_GPIO, CAN_RX_GPIO, CAN_SPEED_KBPS)) {
+            ESP_LOGE(TAG, "Failed to initialize CAN bus driver!");
+            ESP_LOGE(TAG, "Check SN65HVD230 wiring: CTX->GPIO%d, CRX->GPIO%d", 
+                     CAN_TX_GPIO, CAN_RX_GPIO);
+            return;
+        }
+        
+        // Initialize vehicle assistant
+        vehicle::VehicleAssistant& assistant = vehicle::VehicleAssistant::GetInstance();
+        if (!assistant.Initialize()) {
+            ESP_LOGE(TAG, "Failed to initialize Vehicle Assistant!");
+            return;
+        }
+        
+        // Set up callbacks for TTS and display
+        assistant.SetSpeakCallback([](const std::string& message) {
+            ESP_LOGI(TAG, "Vehicle says: %s", message.c_str());
+            // TODO: Integrate with Xiaozhi TTS when ready
+            // Application::GetInstance().Speak(message);
+        });
+        
+        assistant.SetDisplayCallback([this](const std::string& text, int line) {
+            // Display vehicle info on LCD (could use notification or dedicated area)
+            ESP_LOGD(TAG, "Display L%d: %s", line, text.c_str());
+        });
+        
+        // Start CAN bus driver
+        if (!can_driver.Start()) {
+            ESP_LOGE(TAG, "Failed to start CAN bus driver!");
+            return;
+        }
+        
+        // Start vehicle assistant
+        if (!assistant.Start()) {
+            ESP_LOGE(TAG, "Failed to start Vehicle Assistant!");
+            return;
+        }
+        
+        ESP_LOGI(TAG, "CAN Bus and Vehicle Assistant started successfully!");
+        ESP_LOGI(TAG, "Listening for Kia Morning 2017 CAN messages...");
+#else
+        ESP_LOGI(TAG, "========================================");
+        ESP_LOGI(TAG, "CAN Bus DISABLED (SN65HVD230 not connected)");
+        ESP_LOGI(TAG, "To enable: uncomment CONFIG_ENABLE_CAN_BUS in config.h");
+        ESP_LOGI(TAG, "========================================");
+#endif  // CONFIG_ENABLE_CAN_BUS
+    }
+
+    // ========================================================================
+    // Music Button Initialization - Nút nhấn phát nhạc SD (GPIO3)
+    // ========================================================================
+    void InitializeMusicButton() {
+#ifdef MUSIC_BUTTON_GPIO
+        ESP_LOGI(TAG, "========================================");
+        ESP_LOGI(TAG, "Initializing Music Button on GPIO%d", MUSIC_BUTTON_GPIO);
+        ESP_LOGI(TAG, "========================================");
+        
+        auto& music_btn = music::MusicButtonController::GetInstance();
+        if (!music_btn.Initialize()) {
+            ESP_LOGW(TAG, "Failed to initialize music button");
+            return;
+        }
+        
+        // Set callbacks for music control
+        music_btn.SetOnPlayPause([this]() {
+            auto& app = Application::GetInstance();
+            auto sd_music = app.GetSdMusic();
+            
+            if (sd_music) {
+                auto state = sd_music->getState();
+                if (state == Esp32SdMusic::PlayerState::Playing) {
+                    sd_music->pause();
+                    GetDisplay()->ShowNotification("Tạm dừng ⏸");
+                } else if (state == Esp32SdMusic::PlayerState::Paused) {
+                    sd_music->play();
+                    GetDisplay()->ShowNotification("Tiếp tục ▶");
+                } else {
+                    // Stopped - start playing from beginning
+                    if (sd_music->getTotalTracks() > 0) {
+#ifdef MUSIC_SHUFFLE_DEFAULT
+                        sd_music->shuffle(true);
+#endif
+                        sd_music->play();
+                        auto track = sd_music->getCurrentTrack();
+                        GetDisplay()->ShowNotification("▶ " + track);
+                    } else {
+                        GetDisplay()->ShowNotification("Không có nhạc trong thẻ SD");
+                    }
+                }
+            }
+        });
+        
+        music_btn.SetOnNextTrack([this]() {
+            auto& app = Application::GetInstance();
+            auto sd_music = app.GetSdMusic();
+            
+            if (sd_music && sd_music->getTotalTracks() > 0) {
+                sd_music->next();
+                auto track = sd_music->getCurrentTrack();
+                GetDisplay()->ShowNotification("⏭ " + track);
+            }
+        });
+        
+        music_btn.SetOnPrevTrack([this]() {
+            auto& app = Application::GetInstance();
+            auto sd_music = app.GetSdMusic();
+            
+            if (sd_music && sd_music->getTotalTracks() > 0) {
+                sd_music->prev();
+                auto track = sd_music->getCurrentTrack();
+                GetDisplay()->ShowNotification("⏮ " + track);
+            }
+        });
+        
+        music_btn.SetOnShuffleToggle([this]() {
+            auto& app = Application::GetInstance();
+            auto sd_music = app.GetSdMusic();
+            
+            if (sd_music) {
+                static bool shuffle_enabled = MUSIC_SHUFFLE_DEFAULT;
+                shuffle_enabled = !shuffle_enabled;
+                sd_music->shuffle(shuffle_enabled);
+                GetDisplay()->ShowNotification(shuffle_enabled ? "Shuffle: BẬT 🔀" : "Shuffle: TẮT");
+            }
+        });
+        
+        ESP_LOGI(TAG, "Music button initialized!");
+        ESP_LOGI(TAG, "- 1 nhấn: Play/Pause");
+        ESP_LOGI(TAG, "- 2 nhấn nhanh: Bài tiếp theo");
+        ESP_LOGI(TAG, "- Giữ 1s: Bài trước");
+        ESP_LOGI(TAG, "- Giữ 3s: Bật/Tắt Shuffle");
+#else
+        ESP_LOGI(TAG, "Music Button DISABLED (MUSIC_BUTTON_GPIO not defined)");
+#endif
+    }
+
+    // ========================================================================
+    // Offline Audio Player Initialization - Load từ Flash Assets
+    // ========================================================================
+    void InitializeOfflineAudio() {
+#ifdef CONFIG_ENABLE_OFFLINE_MODE
+        ESP_LOGI(TAG, "========================================");
+        ESP_LOGI(TAG, "Initializing Offline Audio Assets (Flash)");
+        ESP_LOGI(TAG, "========================================");
+        
+        // Khởi tạo offline audio player từ flash assets
+        auto& offline_assets = offline::OfflineAudioAssets::GetInstance();
+        if (offline_assets.Initialize()) {
+            ESP_LOGI(TAG, "Offline Audio Assets ready! %d files from Flash", 
+                     (int)offline_assets.GetAudioFileCount());
+        } else {
+            ESP_LOGW(TAG, "Offline Audio Assets failed to initialize");
+            ESP_LOGI(TAG, "Run: python scripts/flash_audio_assets.py");
+        }
+        
+        // Fallback: thử khởi tạo từ SD card nếu flash không có
+        auto sd_card = GetSdCard();
+        if (!offline_assets.IsInitialized() && sd_card) {
+            ESP_LOGI(TAG, "Trying SD card fallback...");
+            auto& offline_player = offline::OfflineAudioPlayer::GetInstance();
+            if (offline_player.Initialize("/sdcard")) {
+                ESP_LOGI(TAG, "Offline Audio Player (SD) ready! %d files", 
+                         (int)offline_player.GetAudioFileCount());
+            }
+        }
+#endif
+    }
+
 public:
     XiaozhiAiIotVietnamBoardLcdSdcard() :
         boot_button_(BOOT_BUTTON_GPIO),
@@ -266,6 +481,10 @@ public:
         InitializeLcdDisplay();
         InitializeButtons();
         InitializeTools();
+        InitializeRelays();  // Initialize relay control for trunk, AC
+        InitializeCanBus();  // Initialize CAN bus for Kia Morning 2017
+        InitializeMusicButton();  // Initialize music button GPIO3
+        InitializeOfflineAudio(); // Initialize offline audio player
         if (DISPLAY_BACKLIGHT_PIN != GPIO_NUM_NC) {
             GetBacklight()->RestoreBrightness();
         }
