@@ -133,6 +133,13 @@ public:
     void Stop();
 
     /**
+     * @brief Test/Debug functions (no CAN Bus required)
+     */
+    void TestOpenTrunk();
+    void TestTurnOnAC();
+    void TestPlayAudio(const char* filename);
+
+    /**
      * @brief Set callback for speaking (TTS)
      * @param callback Function to call when assistant wants to speak
      */

@@ -11,6 +11,7 @@
 #include "vehicle_assistant.h"
 #include "relay_controller.h"
 #include "../config.h"
+#include "../offline/offline_audio_player.h"
 #include <esp_log.h>
 #include <esp_timer.h>
 #include <nvs_flash.h>
@@ -209,6 +210,36 @@ bool VehicleAssistant::Initialize() {
     
     ESP_LOGI(TAG, "Vehicle Assistant initialized successfully");
     return true;
+}
+
+// ============================================================================
+// Test / Debug Functions
+// ============================================================================
+
+// Direct relay test - triggers relay without CAN Bus required
+void VehicleAssistant::TestOpenTrunk() {
+#ifdef CONFIG_ENABLE_RELAY_CONTROL
+    ESP_LOGI(TAG, "TEST: Opening trunk...");
+    relay::VehicleRelayManager::GetInstance().OpenTrunk();
+    Speak("Mở cốp test");
+#else
+    ESP_LOGE(TAG, "Relay control not enabled");
+#endif
+}
+
+void VehicleAssistant::TestTurnOnAC() {
+#ifdef CONFIG_ENABLE_RELAY_CONTROL
+    ESP_LOGI(TAG, "TEST: Turning on AC...");
+    relay::VehicleRelayManager::GetInstance().TurnOnAC();
+    Speak("Bật điều hòa test");
+#else
+    ESP_LOGE(TAG, "Relay control not enabled");
+#endif
+}
+
+void VehicleAssistant::TestPlayAudio(const char* filename) {
+    ESP_LOGI(TAG, "TEST: Playing audio %s", filename);
+    offline::OfflineAudioPlayer::GetInstance().Play(filename);
 }
 
 // ============================================================================
