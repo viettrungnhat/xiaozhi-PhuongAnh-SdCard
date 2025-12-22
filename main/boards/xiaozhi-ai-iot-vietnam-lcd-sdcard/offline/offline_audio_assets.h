@@ -11,7 +11,7 @@
 #include <spi_flash_mmap.h>
 #include <cstring>
 
-#include "config.h"
+#include "../config.h"
 
 namespace offline {
 
@@ -83,7 +83,8 @@ public:
                  file_count_, stored_checksum, data_length);
         
         // Verify checksum
-        const uint8_t* data_start = ptr + (file_count_ * sizeof(AssetEntry));\n        uint32_t calculated_checksum = CalculateChecksum(ptr, data_length);
+        const uint8_t* data_start = ptr + (file_count_ * sizeof(AssetEntry));
+        uint32_t calculated_checksum = CalculateChecksum(ptr, data_length);
         if (calculated_checksum != stored_checksum) {
             ESP_LOGE(TAG, "Checksum mismatch: calc=0x%08X, stored=0x%08X", 
                      calculated_checksum, stored_checksum);
@@ -93,7 +94,8 @@ public:
         
         // Parse asset table
         const AssetEntry* entries = reinterpret_cast<const AssetEntry*>(ptr);
-        data_start_ = data_start;\n        
+        data_start_ = data_start;
+        
         for (uint32_t i = 0; i < file_count_; i++) {
             const AssetEntry& entry = entries[i];
             std::string name(entry.asset_name);

@@ -11,7 +11,7 @@
  * Tích hợp với MCP để điều khiển bằng giọng nói.
  */
 
-#include "config.h"
+#include "../config.h"
 #include <driver/gpio.h>
 #include <esp_log.h>
 #include <freertos/FreeRTOS.h>

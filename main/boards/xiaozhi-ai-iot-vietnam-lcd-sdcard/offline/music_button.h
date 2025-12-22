@@ -10,7 +10,7 @@
 #include <atomic>
 #include <functional>
 
-#include "config.h"
+#include "../config.h"
 
 namespace music {
 
@@ -138,7 +138,7 @@ private:
     MusicButtonController(const MusicButtonController&) = delete;
     MusicButtonController& operator=(const MusicButtonController&) = delete;
     
-    static void IRAM_ATTR ButtonISRHandler(void* arg) {
+    static void ButtonISRHandler(void* arg) {
         auto* self = static_cast<MusicButtonController*>(arg);
 #ifdef MUSIC_BUTTON_GPIO
         int level = gpio_get_level(MUSIC_BUTTON_GPIO);

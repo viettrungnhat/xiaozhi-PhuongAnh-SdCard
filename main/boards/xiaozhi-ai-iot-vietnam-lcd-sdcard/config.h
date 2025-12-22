@@ -318,14 +318,14 @@
 // ============================================================================
 
 // Enable Offline Mode - Bỏ qua kiểm tra cập nhật khi không có WiFi
-#define CONFIG_ENABLE_OFFLINE_MODE
+// #define CONFIG_ENABLE_OFFLINE_MODE  // Temporarily disabled to reduce firmware size
 
 // Skip OTA check at startup - Không kiểm tra cập nhật khi khởi động
 #define CONFIG_SKIP_OTA_CHECK_AT_STARTUP
 
 // Offline audio source - Chọn nguồn âm thanh offline
-#define CONFIG_OFFLINE_AUDIO_FROM_FLASH     // Ưu tiên: Đọc từ Flash assets partition
-// #define CONFIG_OFFLINE_AUDIO_FROM_SD     // Phụ: Đọc từ SD card (fallback)
+// #define CONFIG_OFFLINE_AUDIO_FROM_FLASH     // Ưu tiên: Đọc từ Flash assets partition (disabled - too large)
+#define CONFIG_OFFLINE_AUDIO_FROM_SD     // Phụ: Đọc từ SD card (fallback)
 
 // Audio paths (chỉ dùng khi CONFIG_OFFLINE_AUDIO_FROM_SD)
 #define OFFLINE_AUDIO_PATH          "/audio_opus"
@@ -338,7 +338,7 @@
 
 // GPIO cho nút phát nhạc (sử dụng GPIO3)
 // GPIO3 là strapping pin nhưng an toàn để dùng làm input sau khi boot
-#define MUSIC_BUTTON_GPIO           GPIO_NUM_3
+// #define MUSIC_BUTTON_GPIO           GPIO_NUM_3  // Temporarily disabled to reduce size
 #define MUSIC_BUTTON_ACTIVE_LOW     true    // Nút nhấn nối GND
 
 // Chế độ phát nhạc
@@ -415,7 +415,7 @@
 // ============================================================================
 
 // Enable/Disable Relay Control
-#define CONFIG_ENABLE_RELAY_CONTROL
+// #define CONFIG_ENABLE_RELAY_CONTROL  // Temporarily disabled to reduce firmware size
 
 #ifdef CONFIG_ENABLE_RELAY_CONTROL
 

@@ -10,7 +10,7 @@
 #include <sys/stat.h>
 #include <dirent.h>
 
-#include "config.h"
+#include "../config.h"
 
 namespace offline {
 
