@@ -616,14 +616,13 @@ file(GLOB BOARD_SOURCES
 )
 list(APPEND SOURCES ${BOARD_SOURCES})
 
-# Add CAN Bus sources if enabled
-if(CONFIG_ENABLE_CAN_BUS)
-    list(APPEND SOURCES 
-        "boards/xiaozhi-ai-iot-vietnam-lcd-sdcard/canbus/canbus_driver.cc"
-        "boards/xiaozhi-ai-iot-vietnam-lcd-sdcard/canbus/vehicle_assistant.cc"
-    )
-    list(APPEND INCLUDE_DIRS "boards/xiaozhi-ai-iot-vietnam-lcd-sdcard/canbus")
-endif()
+# Add CAN Bus sources (always compile, controlled by config.h ifdef)
+list(APPEND SOURCES 
+    "boards/xiaozhi-ai-iot-vietnam-lcd-sdcard/canbus/canbus_driver.cc"
+    "boards/xiaozhi-ai-iot-vietnam-lcd-sdcard/canbus/kia_can_protocol.cc"
+    "boards/xiaozhi-ai-iot-vietnam-lcd-sdcard/canbus/vehicle_assistant.cc"
+)
+list(APPEND INCLUDE_DIRS "boards/xiaozhi-ai-iot-vietnam-lcd-sdcard/canbus")
 
 # Select audio processor according to Kconfig
 if(CONFIG_USE_AUDIO_PROCESSOR)

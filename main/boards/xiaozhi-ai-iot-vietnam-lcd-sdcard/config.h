@@ -358,7 +358,7 @@
 
 // Enable/Disable CAN Bus feature
 // Comment out this line to disable CAN bus if SN65HVD230 is not connected
-// #define CONFIG_ENABLE_CAN_BUS
+#define CONFIG_ENABLE_CAN_BUS
 
 // CAN Bus GPIO Pins (SN65HVD230 connection)
 // SN65HVD230 Pin  -> ESP32-S3 Pin

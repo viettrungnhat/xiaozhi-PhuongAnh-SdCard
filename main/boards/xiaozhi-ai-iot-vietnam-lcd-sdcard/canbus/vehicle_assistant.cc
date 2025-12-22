@@ -10,7 +10,7 @@
 
 #include "vehicle_assistant.h"
 #include "relay_controller.h"
-#include "config.h"
+#include "../config.h"
 #include <esp_log.h>
 #include <esp_timer.h>
 #include <nvs_flash.h>

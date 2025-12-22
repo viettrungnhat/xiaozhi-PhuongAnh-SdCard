@@ -12,7 +12,7 @@
  */
 
 #include "canbus_driver.h"
-#include "config.h"
+#include "../config.h"
 #include <esp_timer.h>
 #include <cstring>
 

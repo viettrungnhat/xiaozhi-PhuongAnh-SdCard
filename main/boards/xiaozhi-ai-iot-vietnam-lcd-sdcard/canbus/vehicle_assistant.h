@@ -22,6 +22,7 @@
 #include <freertos/timers.h>
 #include <functional>
 #include <string>
+#include <map>
 #include <atomic>
 
 namespace vehicle {

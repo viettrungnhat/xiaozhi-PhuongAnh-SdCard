@@ -9,7 +9,7 @@
  */
 
 #include "kia_can_protocol.h"
-#include "config.h"
+#include "../config.h"
 #include <esp_log.h>
 #include <esp_timer.h>
 #include <cstring>
