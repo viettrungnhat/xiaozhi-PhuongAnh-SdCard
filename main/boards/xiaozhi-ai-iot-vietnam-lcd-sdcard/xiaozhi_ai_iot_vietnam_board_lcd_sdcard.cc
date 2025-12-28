@@ -344,6 +344,31 @@ private:
         
         ESP_LOGI(TAG, "CAN Bus and Vehicle Assistant started successfully!");
         ESP_LOGI(TAG, "Listening for Kia Morning 2017 CAN messages...");
+        
+        // Create task to display CAN status after Application fully initialized
+        xTaskCreate([](void* param) {
+            auto* board = static_cast<XiaozhiAiIotVietnamBoardLcdSdcard*>(param);
+            
+            // Wait for Application to be fully initialized (30 seconds after boot)
+            vTaskDelay(pdMS_TO_TICKS(30000));
+            
+            // Check CAN connection status
+            auto& can = canbus::CanBusDriver::GetInstance();
+            auto stats = can.GetStats();
+            
+            if (stats.rx_count > 0) {
+                ESP_LOGI("CAN_STATUS", "✓ CAN kết nối! Nhận %d messages", stats.rx_count);
+                board->GetDisplay()->SetChatMessage("system", "✅ CAN kết nối thành công!\n📊 Xe: Kia Morning 2017");
+            } else {
+                ESP_LOGW("CAN_STATUS", "✗ CAN chưa kết nối - Kiểm tra OBD-II");
+                board->GetDisplay()->SetChatMessage("system", "❌ CAN chưa kết nối\n💡 Kiểm tra OBD-II (Pin 6, 14)\n🚗 Bật xe (ACC/ON)");
+            }
+            
+            vTaskDelay(pdMS_TO_TICKS(8000));  // Show for 8 seconds
+            board->GetDisplay()->SetChatMessage("system", "");  // Clear
+            
+            vTaskDelete(nullptr);
+        }, "can_status", 4096, this, 5, nullptr);
 #else
         ESP_LOGI(TAG, "========================================");
         ESP_LOGI(TAG, "CAN Bus DISABLED (SN65HVD230 not connected)");

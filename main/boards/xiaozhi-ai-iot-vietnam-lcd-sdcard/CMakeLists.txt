@@ -23,7 +23,7 @@ add_custom_target(audio_assets
 
 # Component dependency
 idf_component_register(
-    SRCS ""
+    SRCS "xiaozhi_ai_iot_vietnam_board_lcd_sdcard.cc" ""
     INCLUDE_DIRS "."
     REQUIRES "app_update" "esp_partition" "spi_flash"
 )
