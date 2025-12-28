@@ -792,4 +792,14 @@ menu "TAIJIPAI_S3_CONFIG"
         启动双声道
 endmenu
 
+menu "CAN Bus Configuration"
+    config ENABLE_CAN_BUS
+        bool "Enable CAN Bus (TWAI) Support"
+        default n
+        help
+            Enable CAN bus support for vehicle integration.
+            Requires SN65HVD230 transceiver module connected to GPIO17 (TX) and GPIO18 (RX).
+            This feature integrates with the Vehicle Assistant for Kia Morning 2017 Si.
+endmenu
+
 endmenu

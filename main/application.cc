@@ -268,7 +268,17 @@ void Application::ToggleChatState() {
     }
 
     if (!protocol_) {
-        ESP_LOGE(TAG, "Protocol not initialized");
+        // Offline mode - protocol not initialized, just set to idle if currently speaking
+        static int64_t last_warn_time = 0;
+        int64_t now = esp_timer_get_time() / 1000;
+        if (now - last_warn_time > 10000) {  // Log warning every 10 seconds max
+            ESP_LOGW(TAG, "Protocol not initialized (offline mode) - chat state toggle ignored");
+            last_warn_time = now;
+        }
+        // If currently speaking, just go back to idle
+        if (device_state_ == kDeviceStateSpeaking) {
+            SetDeviceState(kDeviceStateIdle);
+        }
         return;
     }
 
@@ -305,7 +315,16 @@ void Application::StartListening() {
     }
 
     if (!protocol_) {
-        ESP_LOGE(TAG, "Protocol not initialized");
+        // Offline mode - protocol not initialized, just set to idle
+        static int64_t last_warn_time_start = 0;
+        int64_t now = esp_timer_get_time() / 1000;
+        if (now - last_warn_time_start > 10000) {  // Log warning every 10 seconds max
+            ESP_LOGW(TAG, "Protocol not initialized (offline mode) - start listening ignored");
+            last_warn_time_start = now;
+        }
+        if (device_state_ == kDeviceStateSpeaking) {
+            SetDeviceState(kDeviceStateIdle);
+        }
         return;
     }
     
@@ -410,26 +429,56 @@ void Application::Start() {
         if (sd_card->Initialize() == ESP_OK) {
             ESP_LOGI(TAG, "SD card mounted successfully");
             display->SetChatMessage("system", "SD card ready...");
+            
+            // Set SD card mounted status in board
+            board.SetSdCardMounted(true);
+            
             sd_music_ = new Esp32SdMusic();
             sd_music_->Initialize(sd_card);
             sd_music_->loadTrackList();
         } else {
             ESP_LOGW(TAG, "Failed to mount SD card");
+            
+            // Set SD card mount failed in board
+            board.SetSdCardMounted(false);
         }
     }
 
     // Update the status bar immediately to show the network state
     display->UpdateStatusBar(true);
 
-    // Check for new assets version
-    display->SetChatMessage("system", "Checking updates...");
-    CheckAssetsVersion();
-
-    // Check for new firmware version or get the MQTT broker address
+    // Check if we should skip OTA checks at startup (for offline mode)
+    // Skip OTA check if WiFi is not connected - allows offline operation
+    bool wifi_connected = WifiStation::GetInstance().IsConnected();
+    
     Ota ota;
-    CheckNewVersion(ota);
+    
+    if (wifi_connected) {
+        // Check for new assets version
+        display->SetChatMessage("system", "Checking updates...");
+        CheckAssetsVersion();
 
-    // Start the OTA server
+        // Check for new firmware version or get the MQTT broker address
+        CheckNewVersion(ota);
+    } else {
+        ESP_LOGI(TAG, "WiFi not connected - entering offline mode");
+        display->SetChatMessage("system", "Chế độ Offline - Không có WiFi");
+        display->SetEmotion("neutral");
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        
+        // Mark as done to allow basic operation
+        xEventGroupSetBits(event_group_, MAIN_EVENT_CHECK_NEW_VERSION_DONE);
+        
+        display->SetChatMessage("system", "Sẵn sàng phát nhạc & cảnh báo offline");
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        
+        // SKIP OTA server and protocol init in offline mode
+        ESP_LOGW(TAG, "Offline mode - skipping OTA server and protocol init");
+        SetDeviceState(kDeviceStateIdle);
+        return;
+    }
+
+    // Start the OTA server (only when WiFi is connected)
     auto& ota_server = ota::OtaServer::GetInstance();
     if (ota_server.Start() == ESP_OK) {
         ESP_LOGI(TAG, "OTA server started successfully");

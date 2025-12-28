@@ -70,6 +70,10 @@ public:
 	Esp32Music* GetMusic() { return music_; }
 	Esp32Radio* GetRadio() { return radio_; }
 	Esp32SdMusic* GetSdMusic() { return sd_music_; }
+	
+	// Check if protocol (MQTT/WebSocket) is initialized (for offline mode detection)
+	bool HasProtocol() const { return protocol_ != nullptr; }
+	Protocol* GetProtocol() { return protocol_.get(); }
 
 private:
     Application();

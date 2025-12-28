@@ -48,6 +48,59 @@ file(GLOB BOARD_COMMON_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/boards/common/*.cc)
 list(APPEND SOURCES ${BOARD_COMMON_SOURCES})
 list(APPEND INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/boards/common)
 
+# Build audio assets if needed (auto-detect changes)
+set(AUDIO_ASSETS_DIR "${CMAKE_SOURCE_DIR}/scripts/assets")
+set(AUDIO_ASSETS_BIN "${AUDIO_ASSETS_DIR}/audio_assets.bin")
+set(AUDIO_SOURCE_DIR "${CMAKE_SOURCE_DIR}/offline_audio")
+
+# Check if we need to rebuild audio assets
+if(EXISTS "${AUDIO_SOURCE_DIR}")
+    file(GLOB_RECURSE AUDIO_FILES "${AUDIO_SOURCE_DIR}/*.opus")
+    if(AUDIO_FILES)
+        # Get latest audio file timestamp
+        set(LATEST_AUDIO_TIME 0)
+        foreach(AUDIO_FILE ${AUDIO_FILES})
+            file(TIMESTAMP "${AUDIO_FILE}" FILE_TIME "%s")
+            if(FILE_TIME GREATER LATEST_AUDIO_TIME)
+                set(LATEST_AUDIO_TIME ${FILE_TIME})
+            endif()
+        endforeach()
+        
+        # Check if binary needs update
+        set(NEED_BUILD FALSE)
+        if(NOT EXISTS "${AUDIO_ASSETS_BIN}")
+            set(NEED_BUILD TRUE)
+            message(STATUS "Audio assets binary not found - will build")
+        else()
+            file(TIMESTAMP "${AUDIO_ASSETS_BIN}" BIN_TIME "%s")
+            if(LATEST_AUDIO_TIME GREATER BIN_TIME)
+                set(NEED_BUILD TRUE)
+                message(STATUS "Audio files newer than binary - will rebuild")
+            endif()
+        endif()
+        
+        # Build audio assets if needed
+        if(NEED_BUILD)
+            message(STATUS "Building audio assets...")
+            execute_process(
+                COMMAND python3 "${CMAKE_SOURCE_DIR}/scripts/build_audio_assets.py"
+                WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+                RESULT_VARIABLE BUILD_RESULT
+                OUTPUT_VARIABLE BUILD_OUTPUT
+                ERROR_VARIABLE BUILD_ERROR
+            )
+            
+            if(BUILD_RESULT EQUAL 0)
+                message(STATUS "✅ Audio assets built successfully")
+            else()
+                message(WARNING "❌ Failed to build audio assets: ${BUILD_ERROR}")
+            endif()
+        else()
+            message(STATUS "✅ Audio assets are up to date")
+        endif()
+    endif()
+endif()
+
 idf_build_get_property(build_components BUILD_COMPONENTS)
 # Function to find component dynamically by pattern
 function(find_component_by_pattern PATTERN COMPONENT_VAR PATH_VAR)
@@ -562,6 +615,14 @@ file(GLOB BOARD_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/*.c
 )
 list(APPEND SOURCES ${BOARD_SOURCES})
+
+# Add CAN Bus sources (always compile, controlled by config.h ifdef)
+list(APPEND SOURCES 
+    "boards/xiaozhi-ai-iot-vietnam-lcd-sdcard/canbus/canbus_driver.cc"
+    "boards/xiaozhi-ai-iot-vietnam-lcd-sdcard/canbus/kia_can_protocol.cc"
+    "boards/xiaozhi-ai-iot-vietnam-lcd-sdcard/canbus/vehicle_assistant.cc"
+)
+list(APPEND INCLUDE_DIRS "boards/xiaozhi-ai-iot-vietnam-lcd-sdcard/canbus")
 
 # Select audio processor according to Kconfig
 if(CONFIG_USE_AUDIO_PROCESSOR)

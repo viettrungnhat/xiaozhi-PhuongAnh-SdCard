@@ -1233,126 +1233,138 @@ void Esp32SdMusic::recordPlayHistory(int index)
 // PLAYBACK THREAD
 void Esp32SdMusic::playbackThreadFunc()
 {
-    TrackInfo track;
-    int play_index = -1;
-    {
-        std::lock_guard<std::mutex> lock(playlist_mutex_);
+    // Use a loop to play sequential tracks instead of calling play() recursively
+    // This avoids the thread crash issue when play() tries to join the current thread
+    
+    while (true) {
+        TrackInfo track;
+        int play_index = -1;
+        {
+            std::lock_guard<std::mutex> lock(playlist_mutex_);
 
-        if (current_index_ < 0 || current_index_ >= (int)playlist_.size()) {
-            ESP_LOGE(TAG, "Invalid current track index");
-            state_.store(PlayerState::Error);
-            return;
+            if (current_index_ < 0 || current_index_ >= (int)playlist_.size()) {
+                ESP_LOGE(TAG, "Invalid current track index");
+                state_.store(PlayerState::Error);
+                return;
+            }
+
+            track = playlist_[current_index_];
+            play_index = current_index_;
         }
 
-        track = playlist_[current_index_];
-        play_index = current_index_;
-    }
+        recordPlayHistory(play_index);
 
-    recordPlayHistory(play_index);
+        state_.store(PlayerState::Playing);
+        ESP_LOGI(TAG, "Playback thread start: %s", track.path.c_str());
+        current_play_time_ms_ = 0;
+        total_duration_ms_ = 0;
 
-    state_.store(PlayerState::Playing);
-    ESP_LOGI(TAG, "Playback thread start: %s", track.path.c_str());
-    current_play_time_ms_ = 0;
-    total_duration_ms_ = 0;
+        auto display = Board::GetInstance().GetDisplay();
+        if (display) {
+            // Ưu tiên title từ ID3, nếu không có thì dùng name
+            std::string title  = !track.title.empty() ? track.title : track.name;
+            std::string artist = track.artist;   // ← lấy từ ID3
 
-    auto display = Board::GetInstance().GetDisplay();
-	if (display) {
-		// Ưu tiên title từ ID3, nếu không có thì dùng name
-		std::string title  = !track.title.empty() ? track.title : track.name;
-		std::string artist = track.artist;   // ← lấy từ ID3
+            std::string line;
+            if (!artist.empty()) {
+                // Ví dụ: "Sơn Tùng M-TP - Chúng Ta Của Hiện Tại"
+                line = artist + " - " + title;
+            } else {
+                line = title;
+            }
 
-		std::string line;
-		if (!artist.empty()) {
-			// Ví dụ: "Sơn Tùng M-TP - Chúng Ta Của Hiện Tại"
-			line = artist + " - " + title;
-		} else {
-			line = title;
-		}
-
-		display->SetMusicInfo(line.c_str());
-		display->StartFFT();
-	}
-
-    InitializeMp3Decoder();
-    mp3_frame_info_ = {};
-
-    bool ok = decodeAndPlayFile(track);
-    cleanupMp3Decoder();
-
-    if (display) {
-        display->StopFFT();
-        if (final_pcm_data_fft_) {
-            display->ReleaseAudioBuffFFT(final_pcm_data_fft_);
-            final_pcm_data_fft_ = nullptr;
+            display->SetMusicInfo(line.c_str());
+            display->StartFFT();
         }
-    }
 
-    resetSampleRate();
+        InitializeMp3Decoder();
+        mp3_frame_info_ = {};
 
-    if (stop_requested_) {
-        state_.store(PlayerState::Stopped);
-        return;
-    }
+        bool ok = decodeAndPlayFile(track);
+        cleanupMp3Decoder();
 
-    if (!ok) {
-        ESP_LOGW(TAG, "Playback error, stopping");
-        state_.store(PlayerState::Error);
-        return;
-    }
+        if (display) {
+            display->StopFFT();
+            if (final_pcm_data_fft_) {
+                display->ReleaseAudioBuffFFT(final_pcm_data_fft_);
+                final_pcm_data_fft_ = nullptr;
+            }
+        }
 
-    ESP_LOGI(TAG, "Playback finished normally: %s", track.name.c_str());
-	
-	// Ưu tiên chuyển bài theo genre nếu đang bật
-	if (!genre_playlist_.empty()) {
-		if (playNextGenre()) return;
-	}
+        resetSampleRate();
 
-    int next_index = -1;
-
-    {
-        std::lock_guard<std::mutex> lock(playlist_mutex_);
-
-        if (playlist_.empty()) {
+        if (stop_requested_) {
             state_.store(PlayerState::Stopped);
             return;
         }
 
-        switch (repeat_mode_) {
-            case RepeatMode::RepeatOne:
-                ESP_LOGI(TAG, "[RepeatOne] → replay same track");
-                next_index = current_index_;
-                break;
-
-            case RepeatMode::RepeatAll:
-                ESP_LOGI(TAG, "[RepeatAll] → next");
-                if (shuffle_enabled_ && playlist_.size() > 1) {
-                    int new_i;
-                    do {
-                        new_i = rand() % playlist_.size();
-                    } while (new_i == current_index_);
-                    next_index = new_i;
-                } else {
-                    next_index = findNextTrackIndex(current_index_, +1);
-                }
-                break;
-
-            case RepeatMode::None:
-            default:
-                ESP_LOGI(TAG, "[No repeat] → stop");
-
-                if (current_index_ == (int)playlist_.size() - 1) {
-                    state_.store(PlayerState::Stopped);
-                    return;
-                }
-
-                next_index = findNextTrackIndex(current_index_, +1);
-                break;
+        if (!ok) {
+            ESP_LOGW(TAG, "Playback error, stopping");
+            state_.store(PlayerState::Error);
+            return;
         }
-    }
 
-    if (next_index >= 0) {
+        ESP_LOGI(TAG, "Playback finished normally: %s", track.name.c_str());
+        
+        // Ưu tiên chuyển bài theo genre nếu đang bật
+        if (!genre_playlist_.empty()) {
+            if (playNextGenre()) return;
+        }
+
+        int next_index = -1;
+
+        {
+            std::lock_guard<std::mutex> lock(playlist_mutex_);
+
+            if (playlist_.empty()) {
+                state_.store(PlayerState::Stopped);
+                return;
+            }
+
+            switch (repeat_mode_) {
+                case RepeatMode::RepeatOne:
+                    ESP_LOGI(TAG, "[RepeatOne] → replay same track");
+                    next_index = current_index_;
+                    break;
+
+                case RepeatMode::RepeatAll:
+                    ESP_LOGI(TAG, "[RepeatAll] → next");
+                    if (shuffle_enabled_ && playlist_.size() > 1) {
+                        int new_i;
+                        do {
+                            new_i = rand() % playlist_.size();
+                        } while (new_i == current_index_);
+                        next_index = new_i;
+                    } else {
+                        next_index = findNextTrackIndex(current_index_, +1);
+                    }
+                    break;
+
+                case RepeatMode::None:
+                default:
+                    ESP_LOGI(TAG, "[No repeat] → stop");
+
+                    if (current_index_ == (int)playlist_.size() - 1) {
+                        state_.store(PlayerState::Stopped);
+                        return;
+                    }
+
+                    next_index = findNextTrackIndex(current_index_, +1);
+                    break;
+            }
+        }
+
+        // If no next track, exit the loop
+        if (next_index < 0) {
+            state_.store(PlayerState::Stopped);
+            return;
+        }
+
+        // Set the next track index and continue the loop to play it
         current_index_ = next_index;
-        play();
+        
+        // Brief delay between tracks
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 
@@ -1381,10 +1393,18 @@ bool Esp32SdMusic::decodeAndPlayFile(const TrackInfo& track)
     auto codec   = Board::GetInstance().GetAudioCodec();
     auto& app    = Application::GetInstance();
 
-    if (!codec || !codec->output_enabled()) {
+    if (!codec) {
+        ESP_LOGE(TAG, "No audio codec available");
         fclose(fp);
         state_.store(PlayerState::Error);
         return false;
+    }
+    
+    // Enable audio output if not already enabled (important for offline mode)
+    if (!codec->output_enabled()) {
+        ESP_LOGI(TAG, "Enabling audio output for SD music playback");
+        codec->EnableOutput(true);
+        vTaskDelay(pdMS_TO_TICKS(50));  // Brief delay for codec to stabilize
     }
 
     const int INPUT_BUF = 8192;
@@ -1440,7 +1460,14 @@ bool Esp32SdMusic::decodeAndPlayFile(const TrackInfo& track)
 
             if (current_state == kDeviceStateListening ||
                 current_state == kDeviceStateSpeaking) {
-                app.ToggleChatState();
+                // In offline mode, directly set state to idle instead of calling ToggleChatState
+                // which would fail without protocol
+                if (app.HasProtocol()) {
+                    app.ToggleChatState();
+                } else {
+                    // Offline mode - force state to idle so music can play
+                    app.SetDeviceState(kDeviceStateIdle);
+                }
                 vTaskDelay(pdMS_TO_TICKS(300));
                 continue;
             } else if (current_state != kDeviceStateIdle) {

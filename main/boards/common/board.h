@@ -52,6 +52,11 @@ public:
     virtual void SetPowerSaveMode(bool enabled) = 0;
     virtual std::string GetBoardJson() = 0;
     virtual std::string GetDeviceStatusJson() = 0;
+    virtual void SetSdCardMounted(bool mounted) { sd_card_mounted_ = mounted; }
+    virtual bool GetSdCardMounted() { return sd_card_mounted_; }
+
+protected:
+    bool sd_card_mounted_ = false;
 };
 
 #define DECLARE_BOARD(BOARD_CLASS_NAME) \
