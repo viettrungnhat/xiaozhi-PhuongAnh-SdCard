@@ -410,11 +410,18 @@ void Application::Start() {
         if (sd_card->Initialize() == ESP_OK) {
             ESP_LOGI(TAG, "SD card mounted successfully");
             display->SetChatMessage("system", "SD card ready...");
+            
+            // Set SD card mounted status in board
+            board.SetSdCardMounted(true);
+            
             sd_music_ = new Esp32SdMusic();
             sd_music_->Initialize(sd_card);
             sd_music_->loadTrackList();
         } else {
             ESP_LOGW(TAG, "Failed to mount SD card");
+            
+            // Set SD card mount failed in board
+            board.SetSdCardMounted(false);
         }
     }
 

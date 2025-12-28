@@ -77,6 +77,9 @@ static const gc9a01_lcd_init_cmd_t gc9107_lcd_init_cmds[] = {
  
 #define TAG "XiaozhiAiIotVietnamBoardLcdSdcard"
 
+// Static variable to store SD card mount status
+static bool sd_card_mounted = false;
+
 class XiaozhiAiIotVietnamBoardLcdSdcard : public WifiBoard {
 private:
  
@@ -369,6 +372,28 @@ private:
             
             vTaskDelete(nullptr);
         }, "can_status", 4096, this, 5, nullptr);
+        
+        // Create task to display SD card status
+        xTaskCreate([](void* param) {
+            auto* board = static_cast<XiaozhiAiIotVietnamBoardLcdSdcard*>(param);
+            
+            // Wait for SD card mount to complete (approximately 11-12 seconds after boot)
+            vTaskDelay(pdMS_TO_TICKS(13000));
+            
+            // Check SD card mount status
+            if (board->IsSdCardMounted()) {
+                ESP_LOGI("SD_STATUS", "✓ SD card mounted successfully");
+                board->GetDisplay()->SetChatMessage("system", "✅ Thẻ nhớ OK\n📁 Sẵn sàng phát nhạc");
+            } else {
+                ESP_LOGW("SD_STATUS", "✗ SD card mount failed");
+                board->GetDisplay()->SetChatMessage("system", "❌ Thẻ nhớ lỗi\n💡 Kiểm tra khe cắm\n🔌 Thử lại sau");
+            }
+            
+            vTaskDelay(pdMS_TO_TICKS(8000));  // Show for 8 seconds
+            board->GetDisplay()->SetChatMessage("system", "");  // Clear
+            
+            vTaskDelete(nullptr);
+        }, "sd_status", 4096, this, 5, nullptr);
 #else
         ESP_LOGI(TAG, "========================================");
         ESP_LOGI(TAG, "CAN Bus DISABLED (SN65HVD230 not connected)");
@@ -518,6 +543,15 @@ public:
     virtual Led* GetLed() override {
         static SingleLed led(BUILTIN_LED_GPIO);
         return &led;
+    }
+
+    // SD card status management
+    void SetSdCardMounted(bool mounted) {
+        sd_card_mounted = mounted;
+    }
+
+    bool IsSdCardMounted() const {
+        return sd_card_mounted;
     }
 
     virtual AudioCodec* GetAudioCodec() override {
