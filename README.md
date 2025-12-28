@@ -118,6 +118,196 @@ Các tính năng sau đây đang được phát triển tích cực và sẽ đ�
 |-----------|-------|------------|
 | 🌐 **OTA qua Webserver Nhúng** | Cập nhật firmware qua webserver tích hợp trong chip | 🔨 Đang phát triển |
 | 🔧 **Web Server Cấu Hình GPIO** | Giao diện web để cấu hình chân GPIO | 🔨 Đang phát triển |
+
+---
+
+## 📶 Quản Lý WiFi & Chế Độ Offline
+
+### 🎤 Điều Khiển Bằng Giọng Nói
+
+#### 📴 Chế Độ OFFLINE (Không cần WiFi)
+```
+Nói: "Bật offline" hoặc "Chế độ offline"
+```
+- ✅ Thiết bị hoạt động **không cần internet**
+- ✅ CAN bus đọc dữ liệu xe OK
+- ✅ Phát nhạc từ SD card OK
+- ✅ Điều khiển relay (cốp, điều hòa) OK
+- ❌ Không có cloud AI, TTS online
+
+#### 📶 Chế Độ ONLINE (Kết nối WiFi)
+```
+Nói: "Bật online" hoặc "Chế độ online"
+```
+- Nếu có WiFi cũ đã lưu → Tự động kết nối
+- Nếu chưa có WiFi → Tạo hotspot để cấu hình
+
+#### 🔄 Reset WiFi (Cấu hình lại từ đầu)
+```
+Nói: "Reset WiFi" hoặc "Cấu hình WiFi mới"
+```
+- Hệ thống tạo **WiFi hotspot** tên: `0986183806-XXXX`
+- Dùng điện thoại kết nối vào hotspot
+- Trình duyệt tự động mở trang cấu hình (captive portal)
+- Chọn WiFi mới và nhập mật khẩu
+- Lưu → Thiết bị tự động kết nối
+
+### 🔘 Điều Khiển Bằng Phím Cứng
+
+#### Boot Button (GPIO0)
+**Khi thiết bị đang khởi động (LED nhấp nháy):**
+- Nhấn **Boot button 1 lần** → Kích hoạt WiFi configuration portal
+
+**Sau khi đã khởi động:**
+- Nhấn **1 lần**: Bật/Tắt chatbot
+- Nhấn **giữ lâu**: Dừng nhạc/radio đang phát
+
+### 🔄 Quy Trình Test Offline Trên Xe
+
+#### Bước 1: Bật chế độ Offline (tại nhà có WiFi)
+```
+1. Nói: "Bật offline"
+2. Thiết bị restart tự động
+3. Màn hình hiển thị "CHẾ ĐỘ OFFLINE"
+4. Thiết bị hoạt động không cần WiFi
+```
+
+#### Bước 2: Test trên xe
+```
+5. Cắm OBD-II vào xe
+6. Bật máy xe
+7. Test CAN bus, điều khiển cốp, AC...
+8. Phát nhạc từ SD card
+```
+
+#### Bước 3: Quay lại Online (khi về nhà)
+```
+9. Nói: "Bật online"
+10. Nếu có WiFi cũ → Tự động kết nối
+11. Nếu chưa có → Tạo hotspot để cấu hình
+```
+
+### ⚙️ Lưu Ý Kỹ Thuật
+
+- **Offline mode**: Thiết bị hoạt động đầy đủ tính năng local (CAN, SD, relay)
+- **Online mode**: Thêm cloud AI, TTS, OTA update
+- **Flag offline**: Lưu trong NVS, giữ qua lần khởi động
+- **Boot button**: Luôn có thể vào WiFi configuration khi khởi động
+
+---
+
+## 🔊 Tạo và Flash Offline Audio Assets
+
+Để chế độ offline hoạt động với âm thanh (lời chào, cảnh báo), cần tạo và flash các file audio vào partition assets.
+
+### 📋 Yêu Cầu
+
+```bash
+# Cài đặt Python dependencies
+pip install edge-tts ffmpeg-python esptool
+
+# Cài đặt FFmpeg (Windows)
+choco install ffmpeg
+# hoặc download từ https://ffmpeg.org/download.html
+```
+
+### 🎵 Bước 1: Tạo File Audio Từ Text
+
+```bash
+cd scripts/audio_assets
+
+# Tạo audio từ danh sách văn bản tiếng Việt
+python create_audio_from_text.py
+
+# Hoặc dùng giọng nam
+python create_audio_from_text.py --voice vi-VN-NamMinhNeural
+```
+
+Các file audio sẽ được tạo trong thư mục `scripts/audio_assets/audio_files/`:
+- `greetings/greeting_morning.opus` - Chào buổi sáng
+- `greetings/greeting_default.opus` - Chào mặc định
+- `warnings/warn_seatbelt.opus` - Nhắc thắt dây an toàn
+- `system/offline_mode.opus` - Thông báo offline
+- ... và nhiều file khác
+
+### 📝 Tùy Chỉnh Nội Dung Audio
+
+Chỉnh sửa file `scripts/audio_assets/audio_text_config.json`:
+
+```json
+{
+    "greetings/greeting_morning.opus": "Xin chào buổi sáng! Chúc bạn một ngày tốt lành!",
+    "warnings/warn_seatbelt.opus": "Xin vui lòng thắt dây an toàn trước khi khởi hành."
+}
+```
+
+### 📦 Bước 2: Build Assets.bin
+
+```bash
+cd scripts/audio_assets
+
+# Build assets mới (chỉ audio)
+python build_audio_assets.py
+
+# Hoặc merge với assets.bin hiện có (giữ fonts, models, emojis)
+python build_audio_assets.py --merge-with ../../build/assets.bin
+```
+
+### ✅ Bước 3: Xác Minh Assets
+
+```bash
+python verify_assets.py build/assets.bin
+```
+
+Output:
+```
+📦 File: build/assets.bin
+   Kích thước: 1500.5 KB
+📊 Tổng kết:
+   🔊 Audio files: 16
+   🔤 Font files: 1
+   🧠 Model files: 1
+   🖼️ Image files: 27
+```
+
+### ⚡ Bước 4: Flash Assets (Không Flash Firmware)
+
+```bash
+cd scripts/audio_assets
+
+# Flash assets.bin vào partition assets
+python flash_assets.py --port COM5
+
+# Hoặc với tốc độ chậm hơn nếu bị lỗi
+python flash_assets.py --port COM5 --baud 115200
+```
+
+**Offset mặc định:**
+- 8MB flash: `0x600000`
+- 16MB flash: `0x9F0000`
+- 4MB flash: `0x300000`
+
+### 🔄 Quy Trình Đầy Đủ
+
+```bash
+# 1. Tạo audio từ text
+cd scripts/audio_assets
+python create_audio_from_text.py
+
+# 2. Build assets (merge với assets hiện có)
+python build_audio_assets.py --merge-with ../../build/assets.bin
+
+# 3. Xác minh
+python verify_assets.py build/assets.bin
+
+# 4. Flash
+python flash_assets.py --port COM5
+
+# 5. Restart thiết bị và kiểm tra log
+```
+
+Xem chi tiết đầy đủ tại: [scripts/audio_assets/README.md](scripts/audio_assets/README.md)
+
 | 🎚️ **Tăng Mic Gain với UI** | Điều chỉnh độ nhạy microphone qua giao diện | 🔨 Đang phát triển |
 | 🔄 **Update V1 lên V2** | Hỗ trợ nâng cấp từ phiên bản V1 lên V2 | 📋 Kế hoạch |
 | 🖥️ **Hỗ Trợ Màn Hình Mới** | Build firmware cho các loại màn hình mới | 🔨 Đang phát triển |

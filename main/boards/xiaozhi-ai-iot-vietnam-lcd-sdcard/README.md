@@ -128,7 +128,7 @@ GPIO3 ──────── Công tắc ──────── GND
 ### Cấu hình trong config.h
 
 ```c
-// GPIO cho nút phát nhạc
+// GPIO cho nút phát nhạc kể cả ko có wwifi
 #define MUSIC_BUTTON_GPIO           GPIO_NUM_3
 #define MUSIC_BUTTON_ACTIVE_LOW     true    // Nút nhấn nối GND
 
@@ -164,8 +164,8 @@ Bo mạch hỗ trợ kết nối CAN Bus để đọc dữ liệu từ xe và cu
 ┌─────────────────────────────────────────────────────────────────┐
 │                      ESP32-S3 (Xiaozhi)                         │
 │                                                                 │
-│     GPIO17 (CAN TX) ──────────────────────┐                     │
-│     GPIO8  (CAN RX) ─────────────────┐    │                     │
+│     GPIO8  (CAN TX) ──────────────────────┐                     │
+│     GPIO17 (CAN RX) ─────────────────┐    │                     │
 │     3.3V ─────────────────────┐      │    │                     │
 │     GND ───────────────┐      │      │    │                     │
 │                        │      │      │    │                     │
@@ -207,8 +207,8 @@ Bo mạch hỗ trợ kết nối CAN Bus để đọc dữ liệu từ xe và cu
 
 | ESP32-S3 GPIO | SN65HVD230 Pin | Mô tả |
 |---------------|----------------|-------|
-| GPIO17 | CTX | CAN Transmit |
-| GPIO8 | CRX | CAN Receive |
+| GPIO8 | CTX | CAN Transmit |
+| GPIO17 | CRX | CAN Receive |
 | 3.3V | VCC | Nguồn 3.3V |
 | GND | GND | Mass chung |
 
@@ -252,8 +252,8 @@ Các thông số cấu hình trong `config.h`:
 
 ```c
 // CAN Bus GPIO Pins
-#define CAN_TX_GPIO         GPIO_NUM_17
-#define CAN_RX_GPIO         GPIO_NUM_8
+#define CAN_TX_GPIO         GPIO_NUM_8
+#define CAN_RX_GPIO         GPIO_NUM_17
 
 // CAN Bus Speed (Kia Morning 2017 uses 500kbps)
 #define CAN_SPEED_KBPS      500
@@ -569,8 +569,8 @@ main/boards/xiaozhi-ai-iot-vietnam-lcd-sdcard/
   - Backlight PWM: GPIO10
 
 - **CAN Bus (SN65HVD230)**
-  - TX: GPIO17
-  - RX: GPIO8
+  - TX: GPIO8
+  - RX: GPIO17
 
 - **Nút & LED**
   - `BOOT_BUTTON_GPIO`: GPIO0 (nút chính/boot)
@@ -793,8 +793,8 @@ Tất cả cấu hình nằm trong file `config.h`:
 // ============================================================================
 
 #define CONFIG_ENABLE_CAN_BUS           // Comment để tắt CAN bus
-#define CAN_TX_GPIO         GPIO_NUM_17
-#define CAN_RX_GPIO         GPIO_NUM_8
+#define CAN_TX_GPIO         GPIO_NUM_8
+#define CAN_RX_GPIO         GPIO_NUM_17
 #define CAN_SPEED_KBPS      500
 
 // ============================================================================
@@ -945,7 +945,7 @@ NVS (Non-Volatile Storage) trên ESP32 lưu WiFi. Khi reset flash:
 
 ---
 
-## 📞 Liên Hệ & Support
+## 📞 Liên Hệ & Support 0986183806
 
 Nếu gặp vấn đề:
 1. Kiểm tra log: `idf.py -p COM3 monitor`

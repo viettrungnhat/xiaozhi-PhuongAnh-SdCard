@@ -96,9 +96,18 @@ public:
         const AssetEntry* entries = reinterpret_cast<const AssetEntry*>(ptr);
         data_start_ = data_start;
         
+        ESP_LOGI(TAG, "========================================");
+        ESP_LOGI(TAG, "📁 Danh sách file âm thanh trong Assets:");
+        ESP_LOGI(TAG, "========================================");
+        
         for (uint32_t i = 0; i < file_count_; i++) {
             const AssetEntry& entry = entries[i];
             std::string name(entry.asset_name);
+            
+            // Normalize path separators (Windows backslash -> forward slash)
+            for (char& c : name) {
+                if (c == '\\') c = '/';
+            }
             
             AudioAsset asset;
             asset.size = entry.asset_size;
@@ -107,11 +116,33 @@ public:
             
             audio_assets_[name] = asset;
             
-            ESP_LOGD(TAG, "Audio: %s (%d bytes)", name.c_str(), asset.size);
+            // Log từng file với icon
+            ESP_LOGI(TAG, "  🎵 %s (%d bytes)", name.c_str(), asset.size);
+        }
+        
+        ESP_LOGI(TAG, "========================================");
+        
+        // Kiểm tra các file quan trọng
+        bool has_greeting = audio_assets_.find("greetings/greeting_default.opus") != audio_assets_.end() ||
+                           audio_assets_.find("greeting_default.opus") != audio_assets_.end();
+        bool has_warning = audio_assets_.find("warnings/warn_seatbelt.opus") != audio_assets_.end() ||
+                          audio_assets_.find("warn_seatbelt.opus") != audio_assets_.end();
+        
+        if (file_count_ == 0) {
+            ESP_LOGW(TAG, "⚠️ KHÔNG CÓ FILE ÂM THANH TRONG ASSETS!");
+            ESP_LOGW(TAG, "💡 Chạy: python scripts/build_audio_assets.py");
+            ESP_LOGW(TAG, "💡 Sau đó flash lại partition assets");
+        } else {
+            if (!has_greeting) {
+                ESP_LOGW(TAG, "⚠️ Thiếu file greeting_default.opus");
+            }
+            if (!has_warning) {
+                ESP_LOGW(TAG, "⚠️ Thiếu file warn_seatbelt.opus");
+            }
         }
         
         is_initialized_ = true;
-        ESP_LOGI(TAG, "Offline Audio Assets initialized! %d files loaded", file_count_);
+        ESP_LOGI(TAG, "✅ Offline Audio Assets initialized! %d files loaded", file_count_);
         return true;
     }
     
@@ -142,18 +173,24 @@ public:
             return nullptr;
         }
         
+        // Normalize path separators
+        std::string normalized_name = filename;
+        for (char& c : normalized_name) {
+            if (c == '\\') c = '/';
+        }
+        
         // Tìm exact match
-        auto it = audio_assets_.find(filename);
+        auto it = audio_assets_.find(normalized_name);
         if (it != audio_assets_.end()) {
             if (size) *size = it->second.size;
             return it->second.data;
         }
         
         // Tìm partial match (bỏ qua path)
-        std::string basename = filename;
-        size_t pos = filename.find_last_of("/\\");
+        std::string basename = normalized_name;
+        size_t pos = normalized_name.find_last_of("/\\");
         if (pos != std::string::npos) {
-            basename = filename.substr(pos + 1);
+            basename = normalized_name.substr(pos + 1);
         }
         
         for (const auto& pair : audio_assets_) {

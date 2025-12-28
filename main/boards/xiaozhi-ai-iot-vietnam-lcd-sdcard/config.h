@@ -369,10 +369,11 @@
 // GND             -> GND
 // CANH            -> Vehicle OBD-II Pin 6
 // CANL            -> Vehicle OBD-II Pin 14
-#define CAN_TX_GPIO         GPIO_NUM_17
-#define CAN_RX_GPIO         GPIO_NUM_8
+// NOTE: Hardware wiring is TX→GPIO8, RX→GPIO17 (swapped from original design)
+#define CAN_TX_GPIO         GPIO_NUM_8
+#define CAN_RX_GPIO         GPIO_NUM_17
 
-// CAN Bus Speed (Kia Morning 2017 uses 500kbps for most modules)
+// CAN Bus Speed - Kia Morning 2017 standard OBD-II
 #define CAN_SPEED_KBPS      500
 
 // CAN Bus Power Saving Configuration

@@ -915,6 +915,11 @@ std::string MCP_GetFuelInfo() {
     kia::KiaCanProtocol& protocol = kia::KiaCanProtocol::GetInstance();
     const kia::VehicleData& data = protocol.GetVehicleData();
     
+    // Check if CAN data is available (fuel should be > 0 if valid)
+    if (data.fuel_level_percent <= 0 || data.fuel_level_percent > 100) {
+        return "Chưa kết nối được với xe. Hãy đảm bảo xe đã nổ máy";
+    }
+    
     char buffer[128];
     kia::FormatFuelForVoice(data.fuel_level_percent, data.range_km, buffer, sizeof(buffer));
     return std::string(buffer);

@@ -183,6 +183,21 @@ bool CanBusDriver::Start() {
         return false;
     }
     
+    // Log TWAI bus state
+    vTaskDelay(pdMS_TO_TICKS(100));
+    twai_status_info_t status;
+    if (twai_get_status_info(&status) == ESP_OK) {
+        ESP_LOGI(TAG, "✅ TWAI Started - State: %d, RX Errors: %d, TX Errors: %d, Arb Losses: %d", 
+                 status.state, status.rx_error_counter, status.tx_error_counter, status.arb_lost_count);
+        
+        // Simplified state logging (just use the numeric value to avoid enum duplicates)
+        if (status.state == TWAI_STATE_RUNNING) {
+            ESP_LOGI(TAG, "   CAN Bus State: RUNNING ✅");
+        } else {
+            ESP_LOGI(TAG, "   CAN Bus State: NOT_RUNNING (State=%d) ⚠️", status.state);
+        }
+    }
+    
     stop_requested_.store(false);
     
     // Create receive task
@@ -517,6 +532,7 @@ void CanBusDriver::ReceiveTask() {
     
     twai_message_t twai_msg;
     uint32_t alerts;
+    int no_msg_counter = 0;
     
     while (!stop_requested_.load()) {
         // Check for alerts (errors, bus events)
@@ -530,9 +546,16 @@ void CanBusDriver::ReceiveTask() {
         esp_err_t err = twai_receive(&twai_msg, pdMS_TO_TICKS(50));
         
         if (err == ESP_OK) {
+            ESP_LOGI(TAG, "📨 RX: ID=0x%03X DLC=%d Data=[%02X %02X %02X %02X %02X %02X %02X %02X]", 
+                     twai_msg.identifier, twai_msg.data_length_code,
+                     twai_msg.data[0], twai_msg.data[1], twai_msg.data[2], twai_msg.data[3],
+                     twai_msg.data[4], twai_msg.data[5], twai_msg.data[6], twai_msg.data[7]);
             ProcessReceivedMessage(twai_msg);
+            no_msg_counter = 0;
         } else if (err != ESP_ERR_TIMEOUT) {
-            ESP_LOGW(TAG, "Receive error: %s", esp_err_to_name(err));
+            ESP_LOGW(TAG, "Receive error: %s (0x%X)", esp_err_to_name(err), err);
+        } else {
+            no_msg_counter++;
         }
         
         // Update status periodically
@@ -542,6 +565,20 @@ void CanBusDriver::ReceiveTask() {
             twai_status_info_t status;
             if (twai_get_status_info(&status) == ESP_OK) {
                 UpdateStats(status);
+                // Log CAN bus status every 5 seconds
+                ESP_LOGI(TAG, "🔍 CAN Status: RX=%d TX=%d Error=%d State=%d NoMsg=%d", 
+                         stats_.rx_count, stats_.tx_count, stats_.error_count, 
+                         status.state, no_msg_counter);
+                
+                // Detailed error diagnosis
+                if (no_msg_counter == 500) {  // After ~50 seconds
+                    ESP_LOGW(TAG, "⚠️  CAN: No messages received!");
+                    ESP_LOGW(TAG, "💡 Hardware checklist:");
+                    ESP_LOGW(TAG, "   1) RS pin on SN65HVD230 connected to GND?");
+                    ESP_LOGW(TAG, "   2) GPIO17(TX)→CTX, GPIO8(RX)→CRX wiring correct?");
+                    ESP_LOGW(TAG, "   3) Engine running and voltage stable?");
+                    ESP_LOGW(TAG, "   4) OBD-II pins: 6(CANH), 14(CANL), 4/5(GND)");
+                }
             }
         }
     }
