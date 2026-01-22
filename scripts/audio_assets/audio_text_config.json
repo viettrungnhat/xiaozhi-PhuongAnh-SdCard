@@ -1,0 +1,31 @@
+{
+    "greetings/greeting_morning.opus": "Xin chào buổi sáng! Chúc bạn một ngày tốt lành và lái xe an toàn nhé!",
+    "greetings/greeting_afternoon.opus": "Xin chào buổi chiều! Chúc bạn có một chuyến đi vui vẻ!",
+    "greetings/greeting_evening.opus": "Xin chào buổi tối! Lái xe cẩn thận, chú ý quan sát nhé!",
+    "greetings/greeting_default.opus": "Xin chào! Tôi là trợ lý ảo trên xe. Rất vui được hỗ trợ bạn!",
+    "greetings/greeting_can_connected.opus": "Hệ thống CAN đã kết nối thành công. Sẵn sàng hỗ trợ bạn!",
+    
+    "warnings/warn_seatbelt.opus": "Xin vui lòng thắt dây an toàn trước khi khởi hành.",
+    "warnings/warn_seatbelt_urgent.opus": "Cảnh báo! Bạn chưa thắt dây an toàn! Vui lòng thắt ngay để đảm bảo an toàn!",
+    "warnings/battery_low.opus": "Cảnh báo! Pin xe đang yếu. Vui lòng kiểm tra ắc quy.",
+    "warnings/fuel_low.opus": "Chú ý! Nhiên liệu còn ít. Vui lòng đổ xăng sớm.",
+    "warnings/engine_overheat.opus": "Cảnh báo! Nhiệt độ động cơ cao. Vui lòng dừng xe kiểm tra.",
+    "warnings/door_open.opus": "Chú ý! Cửa xe chưa đóng kín.",
+    "warnings/handbrake_on.opus": "Chú ý! Phanh tay vẫn đang kéo.",
+    
+    "control/trunk_opened.opus": "Cốp xe đã được mở.",
+    "control/trunk_closed.opus": "Cốp xe đã đóng.",
+    "control/door_locked.opus": "Đã khóa tất cả các cửa.",
+    "control/door_unlocked.opus": "Đã mở khóa các cửa.",
+    "control/ac_on.opus": "Điều hòa đã bật.",
+    "control/ac_off.opus": "Điều hòa đã tắt.",
+    "control/headlight_on.opus": "Đèn pha đã bật.",
+    "control/headlight_off.opus": "Đèn pha đã tắt.",
+    
+    "system/wifi_connected.opus": "WiFi đã kết nối thành công.",
+    "system/wifi_disconnected.opus": "Đã mất kết nối WiFi. Chuyển sang chế độ offline.",
+    "system/offline_mode.opus": "Đã chuyển sang chế độ offline. Các chức năng cơ bản vẫn hoạt động.",
+    "system/online_mode.opus": "Đã kết nối online. Sẵn sàng hỗ trợ bạn!",
+    "system/startup.opus": "Hệ thống khởi động thành công. Sẵn sàng phục vụ!",
+    "system/goodbye.opus": "Tạm biệt! Hẹn gặp lại. Lái xe an toàn nhé!"
+}

@@ -312,4 +312,153 @@
 // A MCP Test: Control a lamp
 #define LAMP_GPIO GPIO_NUM_18
 
+// ============================================================================
+// OFFLINE MODE Configuration
+// Cho phép chatbot hoạt động cơ bản khi không có WiFi
+// ============================================================================
+
+// Enable Offline Mode - Bỏ qua kiểm tra cập nhật khi không có WiFi
+#define CONFIG_ENABLE_OFFLINE_MODE
+
+// Skip OTA check at startup - Không kiểm tra cập nhật khi khởi động
+#define CONFIG_SKIP_OTA_CHECK_AT_STARTUP
+
+// Offline audio source - Chọn nguồn âm thanh offline
+// #define CONFIG_OFFLINE_AUDIO_FROM_FLASH     // Ưu tiên: Đọc từ Flash assets partition (disabled - too large)
+#define CONFIG_OFFLINE_AUDIO_FROM_SD     // Phụ: Đọc từ SD card (fallback)
+
+// Audio paths (chỉ dùng khi CONFIG_OFFLINE_AUDIO_FROM_SD)
+#define OFFLINE_AUDIO_PATH          "/audio_opus"
+#define OFFLINE_MUSIC_PATH          "/music"
+
+// ============================================================================
+// Music Button Configuration
+// Nút nhấn để phát/dừng nhạc từ thẻ SD
+// ============================================================================
+
+// GPIO cho nút phát nhạc (sử dụng GPIO3)
+// GPIO3 là strapping pin nhưng an toàn để dùng làm input sau khi boot
+#define MUSIC_BUTTON_GPIO           GPIO_NUM_3
+#define MUSIC_BUTTON_ACTIVE_LOW     true    // Nút nhấn nối GND
+
+// Chế độ phát nhạc
+#define MUSIC_AUTO_PLAY_ON_BOOT     false   // Tự động phát nhạc khi khởi động
+#define MUSIC_SHUFFLE_DEFAULT       true    // Mặc định bật shuffle
+#define MUSIC_REPEAT_ALL_DEFAULT    true    // Mặc định lặp lại toàn bộ
+
+// Double-click detection (ms)
+#define MUSIC_BUTTON_DEBOUNCE_MS    50
+#define MUSIC_BUTTON_DOUBLE_CLICK_MS 300
+#define MUSIC_BUTTON_LONG_PRESS_MS  1000
+
+// ============================================================================
+// CAN Bus Configuration for Kia Morning 2017 Si
+// Module: SN65HVD230 CAN Transceiver
+// ============================================================================
+
+// Enable/Disable CAN Bus feature
+// Comment out this line to disable CAN bus if SN65HVD230 is not connected
+// Note: CONFIG_ENABLE_CAN_BUS is already defined in sdkconfig.h
+// #define CONFIG_ENABLE_CAN_BUS
+
+// CAN Bus GPIO Pins (SN65HVD230 connection)
+// SN65HVD230 Pin  -> ESP32-S3 Pin
+// CTX (TX)        -> GPIO17
+// CRX (RX)        -> GPIO8
+// VCC             -> 3.3V
+// GND             -> GND
+// CANH            -> Vehicle OBD-II Pin 6
+// CANL            -> Vehicle OBD-II Pin 14
+// NOTE: Hardware wiring is TX→GPIO8, RX→GPIO17 (swapped from original design)
+#define CAN_TX_GPIO         GPIO_NUM_8
+#define CAN_RX_GPIO         GPIO_NUM_17
+
+// CAN Bus Speed - Kia Morning 2017 standard OBD-II
+#define CAN_SPEED_KBPS      500
+
+// CAN Bus Power Saving Configuration
+#define CAN_IDLE_TIMEOUT_MS         (5 * 60 * 1000)  // 5 minutes before entering power save mode
+#define CAN_POWER_SAVE_CHECK_MS     (1000)           // Check for idle every 1 second
+
+// CAN Bus Task Configuration
+#define CAN_TASK_STACK_SIZE         4096
+#define CAN_TASK_PRIORITY           2   // Low priority - let WiFi/audio/microphone run first (prevents CPU stall)
+#define CAN_TASK_CORE               1   // Run on Core 1 to not interfere with WiFi/BT on Core 0
+
+// CAN RX Queue Size - increased to handle high-frequency Kia CAN messages
+#define CAN_RX_QUEUE_SIZE           16384  // Kia sends 100-200 msgs/sec, increased to 16K to prevent queue overflow
+
+// Vehicle Alert Thresholds for Kia Morning 2017
+#define VEHICLE_BATTERY_LOW_VOLTAGE     11.8f   // Volts - warn when battery is low
+#define VEHICLE_BATTERY_CRITICAL_VOLTAGE 11.0f  // Volts - critical warning
+#define VEHICLE_COOLANT_WARN_TEMP       100.0f  // Celsius - engine overheating warning
+#define VEHICLE_COOLANT_CRITICAL_TEMP   105.0f  // Celsius - critical overheating
+
+// Speed thresholds
+#define VEHICLE_SPEED_HIGHWAY           80      // km/h - highway driving mode
+#define VEHICLE_MAX_DRIVE_TIME_MINUTES  120     // 2 hours - recommend break
+
+// Maintenance reminders (based on odometer)
+#define MAINTENANCE_OIL_CHANGE_KM       5000    // Oil change every 5000km
+#define MAINTENANCE_TIRE_CHECK_KM       10000   // Tire check every 10000km
+#define MAINTENANCE_MAJOR_SERVICE_KM    30000   // Major service every 30000km
+
+// ============================================================================
+// Relay GPIO for Vehicle Control (Kia Morning 2017)
+// ============================================================================
+// Sử dụng relay module 5V hoặc 3.3V (active LOW hoặc HIGH tùy module)
+// Kết nối: GPIO -> IN của relay, relay COM/NO -> thiết bị xe
+//
+// GPIO còn trống trên ESP32-S3 cho relay:
+// - GPIO3:  Có thể dùng (strapping pin, cần cẩn thận)
+// - GPIO9:  Có thể dùng  
+// - GPIO46: Có thể dùng (input only trên một số module)
+// - GPIO47: Có thể dùng
+// ============================================================================
+
+// Enable/Disable Relay Control
+#define CONFIG_ENABLE_RELAY_CONTROL
+
+#ifdef CONFIG_ENABLE_RELAY_CONTROL
+
+// Trunk (Cốp xe) Relay - Điều khiển mở cốp điện
+// Kết nối: GPIO9 -> Relay IN -> Relay COM/NO -> Xilanh điện cốp
+#define RELAY_TRUNK_GPIO            GPIO_NUM_9
+#define RELAY_TRUNK_ACTIVE_LEVEL    0           // 0 = Active LOW, 1 = Active HIGH
+#define RELAY_TRUNK_PULSE_MS        500         // Thời gian kích relay (ms)
+
+// AC (Điều hòa) Relay - Điều khiển bật/tắt điều hòa (tùy chọn)
+// Kết nối: GPIO47 -> Relay IN -> Song song với nút AC trên xe
+#define RELAY_AC_GPIO               GPIO_NUM_47
+#define RELAY_AC_ACTIVE_LEVEL       0           // 0 = Active LOW, 1 = Active HIGH
+
+// Horn (Còi) Relay - Điều khiển còi xe (tùy chọn, cẩn thận khi dùng)
+// #define RELAY_HORN_GPIO          GPIO_NUM_NC
+// #define RELAY_HORN_ACTIVE_LEVEL  0
+
+// Hazard Lights Relay - Đèn cảnh báo nguy hiểm (tùy chọn)
+// #define RELAY_HAZARD_GPIO        GPIO_NUM_NC
+// #define RELAY_HAZARD_ACTIVE_LEVEL 0
+
+#endif // CONFIG_ENABLE_RELAY_CONTROL
+
+// ============================================================================
+// Sơ đồ đấu nối Relay Module cho Cốp điện
+// ============================================================================
+//
+//  ESP32-S3                 Relay Module              Xilanh điện cốp
+//  ─────────                ────────────              ────────────────
+//  GPIO9    ──────────────► IN
+//  3.3V     ──────────────► VCC (hoặc 5V tùy module)
+//  GND      ──────────────► GND
+//                           COM ◄───────────────────► Dây + xilanh
+//                           NO  ◄───────────────────► +12V từ ắc quy xe
+//                           NC  (không dùng)
+//
+//  Lưu ý: 
+//  - Dùng relay 12V/10A cho xilanh điện
+//  - Thêm diode flyback (1N4007) song song với xilanh
+//  - Có thể dùng relay module có opto-isolator để an toàn hơn
+// ============================================================================
+
 #endif // _BOARD_CONFIG_H_

@@ -1,0 +1,6 @@
+# ESP-IDF Partition Table - Single App (no OTA)
+# Name,   Type, SubType, Offset,  Size, Flags
+nvs,      data, nvs,     0x9000,    0x4000,
+phy_init, data, phy,     0xf000,    0x1000,
+app,      app,  factory, 0x20000,   0x7c0000,
+assets,   data, spiffs,  0x7e0000,  2M
