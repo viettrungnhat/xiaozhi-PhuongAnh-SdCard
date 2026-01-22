@@ -18,6 +18,7 @@
 #include <nvs.h>
 #include <cstring>
 #include <algorithm>
+#include <map>
 #include <cctype>
 
 static const char* TAG = "Vehicle_Assistant";

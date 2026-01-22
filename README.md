@@ -10,6 +10,22 @@
 
 ---
 
+## 📚 Tài Liệu & Hướng Dẫn
+
+### 🎵 **Setup Audio từ Thẻ SD (77 Cảnh Báo Tiếng Việt)**
+
+| Tài Liệu | Ngôn Ngữ | Mô Tả |
+|---------|---------|-------|
+| [**HUONG_DAN_SD_AUDIO.md**](HUONG_DAN_SD_AUDIO.md) | 🇻🇳 **Tiếng Việt** | **← BẢN HƯỚNG DẪN TIẾNG VIỆT ĐẦY ĐỦ** ⭐ |
+| [SD_AUDIO_SETUP_GUIDE.md](SD_AUDIO_SETUP_GUIDE.md) | 🇬🇧 English | Hướng dẫn chi tiết tiếng Anh |
+| [QUICK_REFERENCE.md](QUICK_REFERENCE.md) | 🇬🇧 English | Tham khảo nhanh 5 phút |
+| [CODE_CHANGES_SUMMARY.md](CODE_CHANGES_SUMMARY.md) | 🇬🇧 English | Tóm tắt thay đổi code |
+| [SD_AUDIO_INTEGRATION_EXAMPLES.cc](SD_AUDIO_INTEGRATION_EXAMPLES.cc) | C++ | Ví dụ code tích hợp CAN |
+
+**👉 Nếu bạn là người Việt, hãy đọc [HUONG_DAN_SD_AUDIO.md](HUONG_DAN_SD_AUDIO.md) - Hướng dẫn đầy đủ bằng tiếng Việt!**
+
+---
+
 ## 🌐 Cộng Đồng & Hỗ Trợ
 
 Tham gia cộng đồng Xiaozhi AI-IoT Vietnam để nhận hỗ trợ, chia sẻ kinh nghiệm và cập nhật tính năng mới:

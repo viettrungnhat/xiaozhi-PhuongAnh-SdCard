@@ -382,11 +382,11 @@
 
 // CAN Bus Task Configuration
 #define CAN_TASK_STACK_SIZE         4096
-#define CAN_TASK_PRIORITY           5   // Medium priority - below audio (7), above display (3)
+#define CAN_TASK_PRIORITY           2   // Low priority - let WiFi/audio/microphone run first (prevents CPU stall)
 #define CAN_TASK_CORE               1   // Run on Core 1 to not interfere with WiFi/BT on Core 0
 
-// CAN RX Queue Size
-#define CAN_RX_QUEUE_SIZE           20
+// CAN RX Queue Size - increased to handle high-frequency Kia CAN messages
+#define CAN_RX_QUEUE_SIZE           16384  // Kia sends 100-200 msgs/sec, increased to 16K to prevent queue overflow
 
 // Vehicle Alert Thresholds for Kia Morning 2017
 #define VEHICLE_BATTERY_LOW_VOLTAGE     11.8f   // Volts - warn when battery is low

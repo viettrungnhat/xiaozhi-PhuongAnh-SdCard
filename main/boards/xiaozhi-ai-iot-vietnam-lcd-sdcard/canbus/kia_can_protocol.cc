@@ -14,6 +14,7 @@
 #include <esp_timer.h>
 #include <cstring>
 #include <cstdio>
+#include <cmath>
 
 static const char* TAG = "Kia_CAN";
 
@@ -88,14 +89,19 @@ bool KiaCanProtocol::Initialize() {
 void KiaCanProtocol::ProcessMessage(const canbus::CanMessage& msg) {
     if (!is_initialized_) return;
     
-    ESP_LOGD(TAG, "Processing CAN ID: 0x%03lX", msg.id);
+    // Diagnostic logging disabled - uncomment to debug
+    // if (msg.id == 0x316 || msg.id == 0x4B0 || msg.id == 0x610 || msg.id == 0x43F) {
+    //     ESP_LOGD(TAG, "📨 CAN 0x%03lX RAW [%02X %02X %02X %02X %02X %02X %02X %02X]",
+    //              msg.id, msg.data[0], msg.data[1], msg.data[2], msg.data[3],
+    //              msg.data[4], msg.data[5], msg.data[6], msg.data[7]);
+    // }
     
     switch (msg.id) {
-        case CAN_ID_ENGINE_DATA_1:
+        case CAN_ID_ENGINE_DATA_1:  // 0x316 - Consolidated engine data
             ParseEngineData1(msg);
             break;
-        case CAN_ID_ENGINE_DATA_2:
-            ParseEngineData2(msg);
+        case CAN_ID_ENGINE_TEMPS:   // 0x316 (same ID, already handled)
+            // Data handled by ParseEngineData1
             break;
         case CAN_ID_VEHICLE_SPEED:
             ParseVehicleSpeed(msg);
@@ -103,16 +109,14 @@ void KiaCanProtocol::ProcessMessage(const canbus::CanMessage& msg) {
         case CAN_ID_ODOMETER:
             ParseOdometer(msg);
             break;
-        case CAN_ID_DOORS:
+        case CAN_ID_DOORS_BRAKE:    // 0x15F
             ParseDoors(msg);
-            break;
-        case CAN_ID_SEATBELT:
-            ParseSeatbelt(msg);
-            break;
-        case CAN_ID_PARKING_BRAKE:
             ParseParkingBrake(msg);
             break;
-        case CAN_ID_LIGHTS:
+        case CAN_ID_SEATBELT:       // 0x0A1
+            ParseSeatbelt(msg);
+            break;
+        case CAN_ID_LIGHTS_WIPER:   // 0x680
             ParseLights(msg);
             break;
         case CAN_ID_BATTERY:
@@ -160,39 +164,82 @@ void KiaCanProtocol::ProcessMessage(const canbus::CanMessage& msg) {
 // ============================================================================
 
 void KiaCanProtocol::ParseEngineData1(const canbus::CanMessage& msg) {
-    if (msg.length < 4) return;
+    // CAN_ID_ENGINE_DATA_1 = 0x316 (verified on actual Kia Morning 2017)
+    // Byte 0: Counter (0-15, ignore)
+    // Byte 1: Coolant temp = B1 - 40°C
+    // Byte 2-3: RPM = (B3<<8 | B2) / 4
+    // Byte 4: Throttle position (0-255 → 0-100%)
+    
+    if (msg.length < 5) return;
     
     if (xSemaphoreTake(data_mutex_, pdMS_TO_TICKS(50)) == pdTRUE) {
-        // RPM: typically bytes 0-1, scaled by 0.25 or similar
-        uint16_t raw_rpm = (msg.data[0] << 8) | msg.data[1];
-        vehicle_data_.engine_rpm = raw_rpm * 0.25f;
+        // Coolant: byte 1 (offset -40)
+        float new_coolant = (float)msg.data[1] - 40.0f;
         
-        // Throttle position: typically byte 2, 0-100%
-        vehicle_data_.throttle_position = msg.data[2] * 100.0f / 255.0f;
+        // RPM: bytes 2-3 (big endian), scale /4
+        uint16_t raw_rpm = (msg.data[3] << 8) | msg.data[2];
+        float new_rpm = raw_rpm / 4.0f;
         
-        ESP_LOGD(TAG, "Engine: RPM=%.0f, Throttle=%.1f%%", 
-                 vehicle_data_.engine_rpm, vehicle_data_.throttle_position);
+        // Throttle position: byte 4, 0-255 → 0-100%
+        float new_throttle = msg.data[4] * 100.0f / 255.0f;
+        
+        // Validate: reject impossible RPM
+        if (new_rpm > 8000.0f) {
+            ESP_LOGW(TAG, "⚠️ Invalid RPM: %.0f (raw=0x%04X)", new_rpm, raw_rpm);
+            xSemaphoreGive(data_mutex_);
+            return;
+        }
+        
+        // Log ONLY if values changed significantly (reduce spam)
+        bool rpm_changed = (fabs(vehicle_data_.engine_rpm - new_rpm) >= 10.0f);
+        bool coolant_changed = (fabs(vehicle_data_.coolant_temp - new_coolant) >= 2.0f);
+        
+        vehicle_data_.engine_rpm = new_rpm;
+        vehicle_data_.coolant_temp = new_coolant;
+        vehicle_data_.throttle_position = new_throttle;
+        
+        if (rpm_changed || coolant_changed) {
+            ESP_LOGI(TAG, "✓ Engine: RPM=%.0f, Coolant=%.0f°C, Throttle=%.0f%%", 
+                     new_rpm, new_coolant, new_throttle);
+        }
         
         xSemaphoreGive(data_mutex_);
     }
 }
 
-void KiaCanProtocol::ParseEngineData2(const canbus::CanMessage& msg) {
-    if (msg.length < 4) return;
+void KiaCanProtocol::ParseEngineTemps(const canbus::CanMessage& msg) {
+    // CAN_ID_ENGINE_TEMPS = 0x269 (low frequency message, safe to log)
+    // Byte 0: Coolant temperature (°C = value - 40)
+    // Byte 1: Intake air temperature (°C = value - 40)
+    
+    if (msg.length < 2) return;
     
     if (xSemaphoreTake(data_mutex_, pdMS_TO_TICKS(50)) == pdTRUE) {
-        // Coolant temperature: typically byte 0, offset by -40
-        vehicle_data_.coolant_temp = (float)msg.data[0] - 40.0f;
+        float new_coolant = (float)msg.data[0] - 40.0f;
+        float new_oil = (float)msg.data[1] - 40.0f;
         
-        // Oil temperature: typically byte 1, offset by -40
-        vehicle_data_.oil_temp = (float)msg.data[1] - 40.0f;
+        // Validate
+        if (new_coolant < -50.0f || new_coolant > 150.0f) {
+            ESP_LOGW(TAG, "Invalid coolant: %.1f°C (raw=0x%02X)", new_coolant, msg.data[0]);
+            if (new_coolant < -50.0f) new_coolant = 0.0f;
+        }
         
-        ESP_LOGD(TAG, "Engine Temp: Coolant=%.1f°C, Oil=%.1f°C", 
-                 vehicle_data_.coolant_temp, vehicle_data_.oil_temp);
+        // Log only if temperature changed by >1°C
+        bool coolant_changed = (fabs(vehicle_data_.coolant_temp - new_coolant) >= 1.0f);
+        bool oil_changed = (fabs(vehicle_data_.oil_temp - new_oil) >= 1.0f);
+        
+        vehicle_data_.coolant_temp = new_coolant;
+        vehicle_data_.oil_temp = new_oil;
+        
+        if (coolant_changed || oil_changed) {
+            ESP_LOGI(TAG, "Temps: Coolant=%.1f°C, Oil=%.1f°C (0x%02X 0x%02X)", 
+                     new_coolant, new_oil, msg.data[0], msg.data[1]);
+        }
         
         xSemaphoreGive(data_mutex_);
     }
 }
+
 
 void KiaCanProtocol::ParseVehicleSpeed(const canbus::CanMessage& msg) {
     if (msg.length < 2) return;
@@ -230,25 +277,26 @@ void KiaCanProtocol::ParseOdometer(const canbus::CanMessage& msg) {
 }
 
 void KiaCanProtocol::ParseDoors(const canbus::CanMessage& msg) {
-    if (msg.length < 1) return;
+    // CAN_ID_DOORS_BRAKE = 0x15F
+    // Byte 0, bits 0-5: Door/Trunk/Hood status (1=Open, 0=Closed)
+    // Byte 1, bit 0: Parking brake (1=Applied, 0=Released)
+    // Byte 1, bit 1: Door locks (1=Locked, 0=Unlocked)
     
-    DoorStatus old_status;
+    if (msg.length < 2) return;
     
     if (xSemaphoreTake(data_mutex_, pdMS_TO_TICKS(50)) == pdTRUE) {
-        old_status = vehicle_data_.doors;
-        
-        // Parse door bits
+        // Parse door bits from byte 0
         uint8_t door_byte = msg.data[0];
-        vehicle_data_.doors.driver_door_open = (door_byte & 0x01) != 0;
-        vehicle_data_.doors.passenger_door_open = (door_byte & 0x02) != 0;
-        vehicle_data_.doors.rear_left_open = (door_byte & 0x04) != 0;
-        vehicle_data_.doors.rear_right_open = (door_byte & 0x08) != 0;
-        vehicle_data_.doors.trunk_open = (door_byte & 0x10) != 0;
-        vehicle_data_.doors.hood_open = (door_byte & 0x20) != 0;
+        vehicle_data_.doors.driver_door_open = (door_byte & 0x01) != 0;      // Bit 0
+        vehicle_data_.doors.passenger_door_open = (door_byte & 0x02) != 0;   // Bit 1
+        vehicle_data_.doors.rear_left_open = (door_byte & 0x04) != 0;        // Bit 2
+        vehicle_data_.doors.rear_right_open = (door_byte & 0x08) != 0;       // Bit 3
+        vehicle_data_.doors.trunk_open = (door_byte & 0x10) != 0;            // Bit 4
+        vehicle_data_.doors.hood_open = (door_byte & 0x20) != 0;             // Bit 5
         
-        if (msg.length >= 2) {
-            vehicle_data_.doors.any_door_unlocked = (msg.data[1] & 0x01) != 0;
-        }
+        // Parse brake and locks from byte 1
+        vehicle_data_.parking_brake_on = (msg.data[1] & 0x01) != 0;          // Bit 0
+        vehicle_data_.doors.any_door_unlocked = (msg.data[1] & 0x02) == 0;   // Bit 1 (inverted logic)
         
         // Update door ajar warning
         vehicle_data_.door_ajar = 
@@ -259,40 +307,64 @@ void KiaCanProtocol::ParseDoors(const canbus::CanMessage& msg) {
             vehicle_data_.doors.trunk_open ||
             vehicle_data_.doors.hood_open;
         
-        ESP_LOGD(TAG, "Doors: Driver=%d, Pass=%d, Trunk=%d", 
+        ESP_LOGI(TAG, "✓ CAN 0x15F: Doors=[0x%02X] Driver=%d, Pass=%d, Trunk=%d, Brake=%d", 
+                 door_byte,
                  vehicle_data_.doors.driver_door_open,
                  vehicle_data_.doors.passenger_door_open,
-                 vehicle_data_.doors.trunk_open);
+                 vehicle_data_.doors.trunk_open,
+                 vehicle_data_.parking_brake_on);
         
         xSemaphoreGive(data_mutex_);
     }
-    
-    // Notify door callbacks if status changed
-    NotifyDoorCallbacks(old_status);
 }
 
 void KiaCanProtocol::ParseSeatbelt(const canbus::CanMessage& msg) {
+    // CAN_ID_SEATBELT = 0x0A1
+    // Byte 0, bit 0: Driver seatbelt (1=Buckled, 0=Unbuckled)
+    // Byte 0, bit 1: Passenger seatbelt (1=Buckled, 0=Unbuckled)
+    // Byte 0, bit 2: Rear left seatbelt (1=Buckled, 0=Unbuckled)
+    // Byte 0, bit 3: Rear right seatbelt (1=Buckled, 0=Unbuckled)
+    
     if (msg.length < 1) return;
     
     if (xSemaphoreTake(data_mutex_, pdMS_TO_TICKS(50)) == pdTRUE) {
-        vehicle_data_.seatbelt_driver = (msg.data[0] & 0x01) != 0;
-        vehicle_data_.seatbelt_passenger = (msg.data[0] & 0x02) != 0;
+        uint8_t belt_byte = msg.data[0];
         
-        ESP_LOGD(TAG, "Seatbelt: Driver=%d, Passenger=%d", 
-                 vehicle_data_.seatbelt_driver, vehicle_data_.seatbelt_passenger);
+        bool old_driver = vehicle_data_.seatbelt_driver;
+        bool old_passenger = vehicle_data_.seatbelt_passenger;
+        
+        // Bit 0: Driver, Bit 1: Passenger (1=fastened, 0=unfastened)
+        vehicle_data_.seatbelt_driver = (belt_byte & 0x01) != 0;
+        vehicle_data_.seatbelt_passenger = (belt_byte & 0x02) != 0;
+        
+        // Log only if changed to reduce spam
+        if (vehicle_data_.seatbelt_driver != old_driver || 
+            vehicle_data_.seatbelt_passenger != old_passenger) {
+            ESP_LOGI(TAG, "⚠️  CAN 0x0A1: Seatbelt: Driver=%s, Passenger=%s (raw=0x%02X)",
+                     vehicle_data_.seatbelt_driver ? "✓" : "✗",
+                     vehicle_data_.seatbelt_passenger ? "✓" : "✗",
+                     belt_byte);
+        }
         
         xSemaphoreGive(data_mutex_);
     }
 }
 
 void KiaCanProtocol::ParseParkingBrake(const canbus::CanMessage& msg) {
+    // Note: Parking brake is now parsed in ParseDoors() from CAN_ID_DOORS_BRAKE (0x15F)
+    // This function kept for compatibility but data is primarily from ParseDoors
+    
     if (msg.length < 1) return;
     
     if (xSemaphoreTake(data_mutex_, pdMS_TO_TICKS(50)) == pdTRUE) {
+        // This might be redundant now, but kept as fallback
+        bool old_state = vehicle_data_.parking_brake_on;
         vehicle_data_.parking_brake_on = (msg.data[0] & 0x01) != 0;
         
-        ESP_LOGD(TAG, "Parking Brake: %s", 
-                 vehicle_data_.parking_brake_on ? "ON" : "OFF");
+        if (vehicle_data_.parking_brake_on != old_state) {
+            ESP_LOGI(TAG, "Parking Brake: %s", 
+                     vehicle_data_.parking_brake_on ? "APPLIED ✓" : "RELEASED");
+        }
         
         xSemaphoreGive(data_mutex_);
     }
@@ -471,50 +543,84 @@ void KiaCanProtocol::CheckForAlerts() {
     if (xSemaphoreTake(data_mutex_, pdMS_TO_TICKS(50)) != pdTRUE) return;
     
     if (xSemaphoreTake(callback_mutex_, pdMS_TO_TICKS(50)) == pdTRUE) {
-        // Check for critical alerts
+        // Get current time for debouncing
+        static int64_t last_overheat_critical_time = 0;
+        static int64_t last_overheat_warn_time = 0;
+        static int64_t last_battery_critical_time = 0;
+        static int64_t last_battery_low_time = 0;
+        static int64_t last_parking_brake_time = 0;
+        static int64_t last_seatbelt_time = 0;
+        static int64_t last_fuel_low_time = 0;
         
-        // Battery low
+        int64_t now = esp_timer_get_time() / 1000;  // milliseconds
+        
+        // Check for critical alerts with debouncing
+        
+        // Battery critical (debounce: 5 seconds)
         if (vehicle_data_.battery_voltage < VEHICLE_BATTERY_CRITICAL_VOLTAGE &&
             vehicle_data_.battery_voltage > 0) {
-            for (auto& callback : alert_callbacks_) {
-                callback("Bố ơi, điện bình rất yếu! Cần kiểm tra ngay!", 1);
+            if (now - last_battery_critical_time > 5000) {
+                for (auto& callback : alert_callbacks_) {
+                    callback("Bố ơi, điện bình rất yếu! Cần kiểm tra ngay!", 1);
+                }
+                last_battery_critical_time = now;
             }
         } else if (vehicle_data_.battery_voltage < VEHICLE_BATTERY_LOW_VOLTAGE &&
                    vehicle_data_.battery_voltage > 0) {
-            for (auto& callback : alert_callbacks_) {
-                callback("Bố ơi, điện bình hơi yếu, bố nên kiểm tra để tránh khó đề máy.", 2);
+            // Battery low (debounce: 30 seconds)
+            if (now - last_battery_low_time > 30000) {
+                for (auto& callback : alert_callbacks_) {
+                    callback("Bố ơi, điện bình hơi yếu, bố nên kiểm tra để tránh khó đề máy.", 2);
+                }
+                last_battery_low_time = now;
             }
         }
         
-        // Engine overheating
+        // Engine overheating - CRITICAL (debounce: 3 seconds)
         if (vehicle_data_.coolant_temp > VEHICLE_COOLANT_CRITICAL_TEMP) {
-            for (auto& callback : alert_callbacks_) {
-                callback("CẢNH BÁO KHẨN CẤP! Nhiệt độ nước làm mát quá cao! Dừng xe ngay!", 0);
+            if (now - last_overheat_critical_time > 3000) {
+                for (auto& callback : alert_callbacks_) {
+                    callback("CẢNH BÁO KHẨN CẤP! Nhiệt độ nước làm mát quá cao! Dừng xe ngay!", 0);
+                }
+                last_overheat_critical_time = now;
             }
         } else if (vehicle_data_.coolant_temp > VEHICLE_COOLANT_WARN_TEMP) {
-            for (auto& callback : alert_callbacks_) {
-                callback("Bố ơi, nhiệt độ máy đang cao, bố nên giảm tốc độ.", 1);
+            // Engine overheating - WARNING (debounce: 10 seconds)
+            if (now - last_overheat_warn_time > 10000) {
+                for (auto& callback : alert_callbacks_) {
+                    callback("Bố ơi, nhiệt độ máy đang cao, bố nên giảm tốc độ.", 1);
+                }
+                last_overheat_warn_time = now;
             }
         }
         
-        // Parking brake warning while moving
+        // Parking brake warning while moving (debounce: 5 seconds)
         if (vehicle_data_.parking_brake_on && vehicle_data_.vehicle_speed > 5) {
-            for (auto& callback : alert_callbacks_) {
-                callback("Bố ơi, phanh tay vẫn đang kéo! Hãy hạ phanh tay nhé!", 1);
+            if (now - last_parking_brake_time > 5000) {
+                for (auto& callback : alert_callbacks_) {
+                    callback("Bố ơi, phanh tay vẫn đang kéo! Hãy hạ phanh tay nhé!", 1);
+                }
+                last_parking_brake_time = now;
             }
         }
         
-        // Seatbelt warning while moving
+        // Seatbelt warning while moving (debounce: 10 seconds)
         if (!vehicle_data_.seatbelt_driver && vehicle_data_.vehicle_speed > 10) {
-            for (auto& callback : alert_callbacks_) {
-                callback("Bố ơi, bố chưa thắt dây an toàn!", 1);
+            if (now - last_seatbelt_time > 10000) {
+                for (auto& callback : alert_callbacks_) {
+                    callback("Bố ơi, bố chưa thắt dây an toàn!", 1);
+                }
+                last_seatbelt_time = now;
             }
         }
         
-        // Low fuel
+        // Low fuel (debounce: 30 seconds)
         if (vehicle_data_.low_fuel && vehicle_data_.ignition == IgnitionState::ON) {
-            for (auto& callback : alert_callbacks_) {
-                callback("Bố ơi, xăng sắp hết rồi. Nên đổ thêm nhé!", 2);
+            if (now - last_fuel_low_time > 30000) {
+                for (auto& callback : alert_callbacks_) {
+                    callback("Bố ơi, xăng sắp hết rồi. Nên đổ thêm nhé!", 2);
+                }
+                last_fuel_low_time = now;
             }
         }
         

@@ -21,37 +21,42 @@
 namespace kia {
 
 // ============================================================================
-// Kia Morning 2017 CAN Bus IDs
-// Note: These are typical IDs for Hyundai/Kia vehicles
-// May need adjustment based on actual vehicle testing
+// Kia Morning 2017 CAN Bus IDs (Actual values for this vehicle)
+// Verified on: Kia Morning 2017 with OBD-II connector
+// See docs/KIA_MORNING_2017_CAN_PROTOCOL_GUIDE.md for detailed format info
 // ============================================================================
 
-// Engine & Powertrain
-constexpr uint32_t CAN_ID_ENGINE_DATA_1         = 0x316;    // RPM, Throttle
-constexpr uint32_t CAN_ID_ENGINE_DATA_2         = 0x329;    // Coolant temp, Oil pressure
-constexpr uint32_t CAN_ID_TRANSMISSION          = 0x371;    // Gear position
-constexpr uint32_t CAN_ID_VEHICLE_SPEED         = 0x386;    // Vehicle speed
-constexpr uint32_t CAN_ID_ODOMETER              = 0x4F0;    // Odometer reading
+// Engine & Powertrain (ECM - Engine Control Module)
+// ✓ VERIFIED ON ACTUAL VEHICLE: 0x316 contains RPM, Coolant, Throttle
+constexpr uint32_t CAN_ID_ENGINE_DATA_1         = 0x316;    // ✓ RPM (B2-3 /4), Coolant (B1-40), Throttle (B4)
+constexpr uint32_t CAN_ID_ENGINE_TEMPS          = 0x316;    // Same ID: Coolant in B1
+constexpr uint32_t CAN_ID_ENGINE_DATA_2         = 0x316;    // Consolidated to 0x316
+constexpr uint32_t CAN_ID_TRANSMISSION          = 0x43F;    // ✓ VERIFIED: Gear position (B0: 0=P, 1=R, 2=N, 3=D)
+constexpr uint32_t CAN_ID_VEHICLE_SPEED         = 0x386;    // ✓ Vehicle speed (wheel speeds)
 
 // Body Control Module (BCM)
-constexpr uint32_t CAN_ID_DOORS                 = 0x4F1;    // Door status
-constexpr uint32_t CAN_ID_SEATBELT              = 0x4F2;    // Seatbelt status
-constexpr uint32_t CAN_ID_PARKING_BRAKE         = 0x4F5;    // Parking brake status
-constexpr uint32_t CAN_ID_LIGHTS                = 0x4F6;    // Lights status
-constexpr uint32_t CAN_ID_WIPER                 = 0x4F7;    // Wiper status
+constexpr uint32_t CAN_ID_DOORS_BRAKE           = 0x15F;    // ✓ Doors, Trunk, Parking Brake, Door Locks
+constexpr uint32_t CAN_ID_SEATBELT              = 0x0A1;    // ✓ Seatbelt status (driver, passenger, rear)
+constexpr uint32_t CAN_ID_LIGHTS_WIPER          = 0x680;    // ✓ Lights (headlights, fog, turn), Wiper
+constexpr uint32_t CAN_ID_ODOMETER              = 0x4F0;    // Odometer reading (if available)
+
+// Backward-compatible aliases for old constant names
+constexpr uint32_t CAN_ID_DOORS                 = CAN_ID_DOORS_BRAKE;    // Alias (use CAN_ID_DOORS_BRAKE)
+constexpr uint32_t CAN_ID_PARKING_BRAKE         = CAN_ID_DOORS_BRAKE;    // Alias (brake data in CAN_ID_DOORS_BRAKE)
+constexpr uint32_t CAN_ID_LIGHTS                = CAN_ID_LIGHTS_WIPER;   // Alias (use CAN_ID_LIGHTS_WIPER)
 
 // Electrical System
 constexpr uint32_t CAN_ID_BATTERY               = 0x5A0;    // Battery voltage
 constexpr uint32_t CAN_ID_IGNITION              = 0x5B0;    // Ignition status
 
 // Climate Control
-constexpr uint32_t CAN_ID_CLIMATE               = 0x7A0;    // AC, Fan, Temperature
+constexpr uint32_t CAN_ID_CLIMATE               = 0x7A0;    // AC status, Fan speed, Cabin temp
 
 // Fuel System
-constexpr uint32_t CAN_ID_FUEL                  = 0x545;    // Fuel level
+constexpr uint32_t CAN_ID_FUEL                  = 0x545;    // ✓ Fuel level %, Estimated range (km)
 
 // Instrument Cluster
-constexpr uint32_t CAN_ID_CLUSTER_1             = 0x580;    // Warning indicators
+constexpr uint32_t CAN_ID_CLUSTER_1             = 0x580;    // Warning indicators, ABS, Check engine
 constexpr uint32_t CAN_ID_CLUSTER_2             = 0x581;    // Trip computer data
 
 // ============================================================================
@@ -277,7 +282,7 @@ private:
 
     // Parsing methods for different CAN IDs
     void ParseEngineData1(const canbus::CanMessage& msg);
-    void ParseEngineData2(const canbus::CanMessage& msg);
+    void ParseEngineTemps(const canbus::CanMessage& msg);  // Engine temperatures (Coolant, Oil, Intake)
     void ParseVehicleSpeed(const canbus::CanMessage& msg);
     void ParseOdometer(const canbus::CanMessage& msg);
     void ParseDoors(const canbus::CanMessage& msg);

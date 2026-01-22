@@ -12,11 +12,14 @@
 #include <cstring>
 
 #include "../config.h"
+#include "board.h"
+#include "audio/audio_codec.h"
+#include "opus.h"
 
 namespace offline {
 
 /**
- * @brief Offline Audio Player (Assets Version) - Phát âm thanh Opus từ Flash
+ * @brief Offline Audio Player (Assets Version) - Phát âm thanh Ogg Opus từ Flash
  * 
  * Đọc audio từ assets partition thay vì SD card để đáng tin cậy hơn
  */
@@ -123,10 +126,10 @@ public:
         ESP_LOGI(TAG, "========================================");
         
         // Kiểm tra các file quan trọng
-        bool has_greeting = audio_assets_.find("greetings/greeting_default.opus") != audio_assets_.end() ||
-                           audio_assets_.find("greeting_default.opus") != audio_assets_.end();
-        bool has_warning = audio_assets_.find("warnings/warn_seatbelt.opus") != audio_assets_.end() ||
-                          audio_assets_.find("warn_seatbelt.opus") != audio_assets_.end();
+        bool has_greeting = audio_assets_.find("greetings/greeting_default.ogg") != audio_assets_.end() ||
+                           audio_assets_.find("greeting_default.ogg") != audio_assets_.end();
+        bool has_warning = audio_assets_.find("warnings/warn_seatbelt.ogg") != audio_assets_.end() ||
+                          audio_assets_.find("warn_seatbelt.ogg") != audio_assets_.end();
         
         if (file_count_ == 0) {
             ESP_LOGW(TAG, "⚠️ KHÔNG CÓ FILE ÂM THANH TRONG ASSETS!");
@@ -134,10 +137,10 @@ public:
             ESP_LOGW(TAG, "💡 Sau đó flash lại partition assets");
         } else {
             if (!has_greeting) {
-                ESP_LOGW(TAG, "⚠️ Thiếu file greeting_default.opus");
+                ESP_LOGW(TAG, "⚠️ Thiếu file greeting_default.ogg");
             }
             if (!has_warning) {
-                ESP_LOGW(TAG, "⚠️ Thiếu file warn_seatbelt.opus");
+                ESP_LOGW(TAG, "⚠️ Thiếu file warn_seatbelt.ogg");
             }
         }
         
@@ -205,7 +208,7 @@ public:
     }
     
     /**
-     * @brief Phát file audio (tích hợp với AudioService sau)
+     * @brief Phát file audio từ Flash - decode Ogg Opus và phát qua audio codec
      */
     bool Play(const std::string& filename) {
         size_t size;
@@ -215,28 +218,183 @@ public:
             return false;
         }
         
-        ESP_LOGI(TAG, "Playing: %s (%d bytes)", filename.c_str(), (int)size);
+        ESP_LOGI(TAG, "🔊 Playing: %s (%d bytes)", filename.c_str(), (int)size);
         current_file_ = filename;
         
-        // TODO: Tích hợp với AudioService để phát opus data
-        // AudioService::PlayOpusData(data, size);
+        // Get audio codec
+        auto codec = Board::GetInstance().GetAudioCodec();
+        if (!codec) {
+            ESP_LOGE(TAG, "❌ No audio codec available");
+            return false;
+        }
         
+        // Enable output if needed
+        if (!codec->output_enabled()) {
+            ESP_LOGI(TAG, "🔈 Enabling audio output");
+            codec->EnableOutput(true);
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
+        
+        // Allocate PCM buffer for Opus decode
+        int16_t* pcm = new int16_t[5760];  // Max Opus frame size per frame
+        if (!pcm) {
+            ESP_LOGE(TAG, "❌ Cannot allocate PCM buffer");
+            return false;
+        }
+        
+        // Create Opus decoder - will determine sample rate from OpusHead
+        int opus_error = 0;
+        OpusDecoder* opus_decoder = opus_decoder_create(48000, 1, &opus_error);
+        if (!opus_decoder || opus_error != 0) {
+            ESP_LOGE(TAG, "❌ Failed to create Opus decoder (error: %d)", opus_error);
+            delete[] pcm;
+            return false;
+        }
+        
+        const uint8_t* buf = data;
+        size_t size_remaining = size;
+        size_t offset = 0;
+        int total_samples = 0;
+        bool first_frame = true;
+        int sample_rate = 24000;
+        
+        // Helper lambda to find Ogg page start marker
+        auto find_page = [&](size_t start) -> size_t {
+            for (size_t i = start; i + 4 <= size_remaining; ++i) {
+                if (buf[i] == 'O' && buf[i+1] == 'g' && 
+                    buf[i+2] == 'g' && buf[i+3] == 'S') {
+                    return i;
+                }
+            }
+            return static_cast<size_t>(-1);
+        };
+        
+        bool seen_head = false;
+        bool seen_tags = false;
+        
+        // Parse Ogg stream pages
+        while (true) {
+            size_t pos = find_page(offset);
+            if (pos == static_cast<size_t>(-1)) break;
+            offset = pos;
+            if (offset + 27 > size_remaining) break;
+            
+            const uint8_t* page = buf + offset;
+            uint8_t page_segments = page[26];
+            size_t seg_table_off = offset + 27;
+            if (seg_table_off + page_segments > size_remaining) break;
+            
+            // Calculate page body size from segment table
+            size_t body_size = 0;
+            for (size_t i = 0; i < page_segments; ++i) {
+                body_size += page[27 + i];
+            }
+            
+            size_t body_off = seg_table_off + page_segments;
+            if (body_off + body_size > size_remaining) break;
+            
+            // Parse packets from this page using lacing values
+            size_t cur = body_off;
+            size_t seg_idx = 0;
+            while (seg_idx < page_segments) {
+                size_t pkt_len = 0;
+                size_t pkt_start = cur;
+                bool continued = false;
+                
+                // Reconstruct packet from lacing values
+                do {
+                    uint8_t l = page[27 + seg_idx++];
+                    pkt_len += l;
+                    cur += l;
+                    continued = (l == 255);
+                } while (continued && seg_idx < page_segments);
+                
+                if (pkt_len == 0) continue;
+                const uint8_t* pkt_ptr = buf + pkt_start;
+                
+                // Parse OpusHead (first packet)
+                if (!seen_head) {
+                    if (pkt_len >= 19 && std::memcmp(pkt_ptr, "OpusHead", 8) == 0) {
+                        seen_head = true;
+                        
+                        if (pkt_len >= 16) {
+                            uint8_t version = pkt_ptr[8];
+                            uint8_t channel_count = pkt_ptr[9];
+                            // Read input sample rate (little-endian)
+                            sample_rate = pkt_ptr[12] | (pkt_ptr[13] << 8) | 
+                                        (pkt_ptr[14] << 16) | (pkt_ptr[15] << 24);
+                            ESP_LOGI(TAG, "OpusHead: version=%d, channels=%d, sample_rate=%d", 
+                                   version, channel_count, sample_rate);
+                        }
+                    }
+                    continue;
+                }
+                
+                // Skip OpusTags (second packet)
+                if (!seen_tags) {
+                    if (pkt_len >= 8 && std::memcmp(pkt_ptr, "OpusTags", 8) == 0) {
+                        seen_tags = true;
+                    }
+                    continue;
+                }
+                
+                // Audio packet - decode Opus frame
+                int samples_decoded = opus_decode(opus_decoder, pkt_ptr, pkt_len, pcm, 5760, 0);
+                
+                if (samples_decoded < 0) {
+                    ESP_LOGW(TAG, "Opus decode error: %d", samples_decoded);
+                } else if (samples_decoded > 0) {
+                    if (first_frame) {
+                        ESP_LOGI(TAG, "🎵 Opus: samprate=%d Hz, channels=1, samples=%d", 
+                               sample_rate, samples_decoded);
+                        ESP_LOGI(TAG, "🔊 Codec samprate: %d Hz", codec->output_sample_rate());
+                        
+                        if (codec->output_sample_rate() != sample_rate) {
+                            ESP_LOGI(TAG, "⚙️  Setting codec: %d Hz → %d Hz", 
+                                     codec->output_sample_rate(), sample_rate);
+                            codec->SetOutputSampleRate(sample_rate);
+                        }
+                        first_frame = false;
+                    }
+                    
+                    // Convert mono to stereo
+                    std::vector<int16_t> stereo_pcm;
+                    stereo_pcm.reserve(samples_decoded * 2);
+                    for (int i = 0; i < samples_decoded; i++) {
+                        stereo_pcm.push_back(pcm[i]);
+                        stereo_pcm.push_back(pcm[i]);
+                    }
+                    
+                    codec->OutputData(stereo_pcm);
+                    total_samples += samples_decoded;
+                }
+            }
+            
+            offset = body_off + body_size;
+            vTaskDelay(pdMS_TO_TICKS(1));
+        }
+        
+        delete[] pcm;
+        opus_decoder_destroy(opus_decoder);
+        
+        float duration = (float)total_samples / sample_rate;
+        ESP_LOGI(TAG, "✅ Playback complete: %d samples (%.1f sec)", total_samples, duration);
         return true;
     }
     
     // === Convenience methods giống như OfflineAudioPlayer ===
     
-    bool PlayGreetingMorning() { return Play("greetings/greeting_morning.opus"); }
-    bool PlayGreetingDefault() { return Play("greetings/greeting_default.opus"); }
-    bool PlayWarnSeatbelt() { return Play("warnings/warn_seatbelt.opus"); }
-    bool PlayWarnSeatbeltUrgent() { return Play("warnings/warn_seatbelt_urgent.opus"); }
-    bool PlayBatteryLow() { return Play("warnings/battery_low.opus"); }
-    bool PlayBatteryCritical() { return Play("warnings/battery_critical.opus"); }
-    bool PlayTempCritical() { return Play("warnings/temp_critical.opus"); }
-    bool PlayFuelLow() { return Play("warnings/fuel_low.opus"); }
-    bool PlayTrunkOpened() { return Play("control/trunk_opened.opus"); }
-    bool PlayAcOn() { return Play("control/ac_on.opus"); }
-    bool PlayRestReminder() { return Play("highway/rest_reminder.opus"); }
+    bool PlayGreetingMorning() { return Play("greeting_morning.ogg"); }
+    bool PlayGreetingDefault() { return Play("greeting_default.ogg"); }
+    bool PlayWarnSeatbelt() { return Play("warn_seatbelt.ogg"); }
+    bool PlayWarnSeatbeltUrgent() { return Play("warn_seatbelt_urgent.ogg"); }
+    bool PlayBatteryLow() { return Play("battery_low.ogg"); }
+    bool PlayBatteryCritical() { return Play("battery_critical.ogg"); }
+    bool PlayTempCritical() { return Play("temp_critical.ogg"); }
+    bool PlayFuelLow() { return Play("fuel_low.ogg"); }
+    bool PlayTrunkOpened() { return Play("trunk_opened.ogg"); }
+    bool PlayAcOn() { return Play("ac_on.ogg"); }
+    bool PlayRestReminder() { return Play("rest_reminder.ogg"); }
     
     bool PlaySpeedAnnouncement(int speed) {
         int rounded = (speed / 10) * 10;
@@ -244,7 +402,7 @@ public:
         if (rounded > 120) rounded = 120;
         
         char filename[64];
-        snprintf(filename, sizeof(filename), "highway/speed_%d.opus", rounded);
+        snprintf(filename, sizeof(filename), "speed_%d.ogg", rounded);
         return Play(filename);
     }
     
@@ -255,11 +413,11 @@ public:
         int hour = timeinfo->tm_hour;
         
         if (hour >= 5 && hour < 12) {
-            return Play("greetings/greeting_morning.opus");
+            return Play("greeting_morning.ogg");
         } else if (hour >= 12 && hour < 18) {
-            return Play("greetings/greeting_afternoon.opus");
+            return Play("greeting_afternoon.ogg");
         } else {
-            return Play("greetings/greeting_evening.opus");
+            return Play("greeting_evening.ogg");
         }
     }
     

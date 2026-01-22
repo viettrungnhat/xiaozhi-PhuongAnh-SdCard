@@ -107,37 +107,37 @@ public:
     // === Convenience methods cho các âm thanh thường dùng ===
     
     // Lời chào
-    bool PlayGreetingMorning() { return PlayFromCategory(AudioCategory::GREETINGS, "greeting_morning.opus"); }
-    bool PlayGreetingAfternoon() { return PlayFromCategory(AudioCategory::GREETINGS, "greeting_afternoon.opus"); }
-    bool PlayGreetingEvening() { return PlayFromCategory(AudioCategory::GREETINGS, "greeting_evening.opus"); }
-    bool PlayGreetingDefault() { return PlayFromCategory(AudioCategory::GREETINGS, "greeting_default.opus"); }
-    bool PlayGoodbye() { return PlayFromCategory(AudioCategory::GREETINGS, "goodbye.opus"); }
+    bool PlayGreetingMorning() { return PlayFromCategory(AudioCategory::GREETINGS, "greeting_morning.mp3"); }
+    bool PlayGreetingAfternoon() { return PlayFromCategory(AudioCategory::GREETINGS, "greeting_afternoon.mp3"); }
+    bool PlayGreetingEvening() { return PlayFromCategory(AudioCategory::GREETINGS, "greeting_evening.mp3"); }
+    bool PlayGreetingDefault() { return PlayFromCategory(AudioCategory::GREETINGS, "greeting_default.mp3"); }
+    bool PlayGoodbye() { return PlayFromCategory(AudioCategory::GREETINGS, "goodbye.mp3"); }
     
     // Cảnh báo an toàn
-    bool PlayWarnSeatbelt() { return PlayFromCategory(AudioCategory::WARNINGS, "warn_seatbelt.opus"); }
-    bool PlayWarnSeatbeltUrgent() { return PlayFromCategory(AudioCategory::WARNINGS, "warn_seatbelt_urgent.opus"); }
-    bool PlayWarnParkingBrake() { return PlayFromCategory(AudioCategory::WARNINGS, "warn_parking_brake.opus"); }
-    bool PlayWarnParkingBrakeUrgent() { return PlayFromCategory(AudioCategory::WARNINGS, "warn_parking_brake_urgent.opus"); }
-    bool PlayWarnDoorOpen() { return PlayFromCategory(AudioCategory::WARNINGS, "warn_door_open.opus"); }
-    bool PlayWarnLightsOn() { return PlayFromCategory(AudioCategory::WARNINGS, "warn_lights_on.opus"); }
+    bool PlayWarnSeatbelt() { return PlayFromCategory(AudioCategory::WARNINGS, "warn_seatbelt.mp3"); }
+    bool PlayWarnSeatbeltUrgent() { return PlayFromCategory(AudioCategory::WARNINGS, "warn_seatbelt_urgent.mp3"); }
+    bool PlayWarnParkingBrake() { return PlayFromCategory(AudioCategory::WARNINGS, "warn_parking_brake.mp3"); }
+    bool PlayWarnParkingBrakeUrgent() { return PlayFromCategory(AudioCategory::WARNINGS, "warn_parking_brake_urgent.mp3"); }
+    bool PlayWarnDoorOpen() { return PlayFromCategory(AudioCategory::WARNINGS, "warn_door_open.mp3"); }
+    bool PlayWarnLightsOn() { return PlayFromCategory(AudioCategory::WARNINGS, "warn_lights_on.mp3"); }
     
     // Cảnh báo ắc quy
-    bool PlayBatteryLow() { return PlayFromCategory(AudioCategory::WARNINGS, "battery_low.opus"); }
-    bool PlayBatteryCritical() { return PlayFromCategory(AudioCategory::WARNINGS, "battery_critical.opus"); }
+    bool PlayBatteryLow() { return PlayFromCategory(AudioCategory::WARNINGS, "battery_low.mp3"); }
+    bool PlayBatteryCritical() { return PlayFromCategory(AudioCategory::WARNINGS, "battery_critical.mp3"); }
     
     // Cảnh báo nhiệt độ
-    bool PlayTempHigh() { return PlayFromCategory(AudioCategory::WARNINGS, "temp_high.opus"); }
-    bool PlayTempCritical() { return PlayFromCategory(AudioCategory::WARNINGS, "temp_critical.opus"); }
-    bool PlayTempNormal() { return PlayFromCategory(AudioCategory::WARNINGS, "temp_normal.opus"); }
+    bool PlayTempHigh() { return PlayFromCategory(AudioCategory::WARNINGS, "temp_high.mp3"); }
+    bool PlayTempCritical() { return PlayFromCategory(AudioCategory::WARNINGS, "temp_critical.mp3"); }
+    bool PlayTempNormal() { return PlayFromCategory(AudioCategory::WARNINGS, "temp_normal.mp3"); }
     
     // Cảnh báo xăng
-    bool PlayFuelLow() { return PlayFromCategory(AudioCategory::WARNINGS, "fuel_low.opus"); }
-    bool PlayFuelCritical() { return PlayFromCategory(AudioCategory::WARNINGS, "fuel_critical.opus"); }
-    bool PlayFuelReserve() { return PlayFromCategory(AudioCategory::WARNINGS, "fuel_reserve.opus"); }
+    bool PlayFuelLow() { return PlayFromCategory(AudioCategory::WARNINGS, "fuel_low.mp3"); }
+    bool PlayFuelCritical() { return PlayFromCategory(AudioCategory::WARNINGS, "fuel_critical.mp3"); }
+    bool PlayFuelReserve() { return PlayFromCategory(AudioCategory::WARNINGS, "fuel_reserve.mp3"); }
     
     // Chế độ đường trường
-    bool PlayHighwayModeOn() { return PlayFromCategory(AudioCategory::HIGHWAY, "highway_mode_on.opus"); }
-    bool PlayHighwayModeOff() { return PlayFromCategory(AudioCategory::HIGHWAY, "highway_mode_off.opus"); }
+    bool PlayHighwayModeOn() { return PlayFromCategory(AudioCategory::HIGHWAY, "highway_mode_on.mp3"); }
+    bool PlayHighwayModeOff() { return PlayFromCategory(AudioCategory::HIGHWAY, "highway_mode_off.mp3"); }
     bool PlaySpeedAnnouncement(int speed) {
         // Làm tròn về bội số của 10
         int rounded = (speed / 10) * 10;
@@ -145,23 +145,23 @@ public:
         if (rounded > 120) rounded = 120;
         
         char filename[32];
-        snprintf(filename, sizeof(filename), "speed_%d.opus", rounded);
+        snprintf(filename, sizeof(filename), "speed_%d.mp3", rounded);
         return PlayFromCategory(AudioCategory::HIGHWAY, filename);
     }
-    bool PlaySpeedOverLimit() { return PlayFromCategory(AudioCategory::HIGHWAY, "speed_over_limit.opus"); }
-    bool PlayRestReminder() { return PlayFromCategory(AudioCategory::HIGHWAY, "rest_reminder.opus"); }
+    bool PlaySpeedOverLimit() { return PlayFromCategory(AudioCategory::HIGHWAY, "speed_over_limit.mp3"); }
+    bool PlayRestReminder() { return PlayFromCategory(AudioCategory::HIGHWAY, "rest_reminder.mp3"); }
     
     // Điều khiển
-    bool PlayTrunkOpening() { return PlayFromCategory(AudioCategory::CONTROL, "trunk_opening.opus"); }
-    bool PlayTrunkOpened() { return PlayFromCategory(AudioCategory::CONTROL, "trunk_opened.opus"); }
-    bool PlayAcOn() { return PlayFromCategory(AudioCategory::CONTROL, "ac_on.opus"); }
-    bool PlayAcOff() { return PlayFromCategory(AudioCategory::CONTROL, "ac_off.opus"); }
-    bool PlayReadyToGo() { return PlayFromCategory(AudioCategory::CONTROL, "ready_to_go.opus"); }
+    bool PlayTrunkOpening() { return PlayFromCategory(AudioCategory::CONTROL, "trunk_opening.mp3"); }
+    bool PlayTrunkOpened() { return PlayFromCategory(AudioCategory::CONTROL, "trunk_opened.mp3"); }
+    bool PlayAcOn() { return PlayFromCategory(AudioCategory::CONTROL, "ac_on.mp3"); }
+    bool PlayAcOff() { return PlayFromCategory(AudioCategory::CONTROL, "ac_off.mp3"); }
+    bool PlayReadyToGo() { return PlayFromCategory(AudioCategory::CONTROL, "ready_to_go.mp3"); }
     
     // Bảo dưỡng
-    bool PlayMaintOilChange() { return PlayFromCategory(AudioCategory::WARNINGS, "maint_oil_change.opus"); }
-    bool PlayMaintTireCheck() { return PlayFromCategory(AudioCategory::WARNINGS, "maint_tire_check.opus"); }
-    bool PlayMaintGeneral() { return PlayFromCategory(AudioCategory::WARNINGS, "maint_general.opus"); }
+    bool PlayMaintOilChange() { return PlayFromCategory(AudioCategory::WARNINGS, "maint_oil_change.mp3"); }
+    bool PlayMaintTireCheck() { return PlayFromCategory(AudioCategory::WARNINGS, "maint_tire_check.mp3"); }
+    bool PlayMaintGeneral() { return PlayFromCategory(AudioCategory::WARNINGS, "maint_general.mp3"); }
     
     /**
      * @brief Phát số (ghép các file số lại với nhau)
@@ -176,24 +176,24 @@ public:
         // Đơn giản hóa: chỉ phát các số đơn hoặc số tròn chục
         if (number <= 20) {
             char filename[32];
-            snprintf(filename, sizeof(filename), "num_%d.opus", number);
+            snprintf(filename, sizeof(filename), "num_%d.mp3", number);
             return PlayFromCategory(AudioCategory::NUMBERS, filename);
         } else if (number < 100) {
             int tens = (number / 10) * 10;
             int units = number % 10;
             
             char tens_file[32];
-            snprintf(tens_file, sizeof(tens_file), "num_%d.opus", tens);
+            snprintf(tens_file, sizeof(tens_file), "num_%d.mp3", tens);
             PlayFromCategory(AudioCategory::NUMBERS, tens_file);
             
             if (units > 0) {
                 char units_file[32];
-                snprintf(units_file, sizeof(units_file), "num_%d.opus", units);
+                snprintf(units_file, sizeof(units_file), "num_%d.mp3", units);
                 PlayFromCategory(AudioCategory::NUMBERS, units_file);
             }
             return true;
         } else if (number == 100) {
-            return PlayFromCategory(AudioCategory::NUMBERS, "num_100.opus");
+            return PlayFromCategory(AudioCategory::NUMBERS, "num_100.mp3");
         }
         
         // Số lớn hơn - cần xử lý phức tạp hơn
@@ -214,25 +214,25 @@ public:
     
     // Phát thông tin xe
     bool PlaySpeedInfo(int speed_kmh) {
-        return PlayInfoWithValue("info_speed_prefix.opus", speed_kmh, "info_km.opus");
+        return PlayInfoWithValue("info_speed_prefix.mp3", speed_kmh, "info_km.mp3");
     }
     
     bool PlayFuelInfo(int fuel_percent) {
-        return PlayInfoWithValue("info_fuel_prefix.opus", fuel_percent, "info_percent.opus");
+        return PlayInfoWithValue("info_fuel_prefix.mp3", fuel_percent, "info_percent.mp3");
     }
     
     bool PlayTempInfo(int temp_celsius) {
-        return PlayInfoWithValue("info_temp_prefix.opus", temp_celsius, "info_degrees.opus");
+        return PlayInfoWithValue("info_temp_prefix.mp3", temp_celsius, "info_degrees.mp3");
     }
     
     bool PlayBatteryInfo(float voltage) {
         // Chuyển voltage thành số nguyên * 10 (vd: 12.5V -> 125)
         int v = (int)(voltage * 10);
-        PlayFromCategory(AudioCategory::INFO, "info_battery_prefix.opus");
+        PlayFromCategory(AudioCategory::INFO, "info_battery_prefix.mp3");
         PlayNumber(v / 10);
-        PlayFromCategory(AudioCategory::NUMBERS, "num_point.opus");
+        PlayFromCategory(AudioCategory::NUMBERS, "num_point.mp3");
         PlayNumber(v % 10);
-        PlayFromCategory(AudioCategory::INFO, "info_volts.opus");
+        PlayFromCategory(AudioCategory::INFO, "info_volts.mp3");
         return true;
     }
     

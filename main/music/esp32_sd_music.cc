@@ -866,9 +866,14 @@ void Esp32SdMusic::scanDirectoryRecursive(
             continue;
         }
 
-        // Nếu là thư mục → đệ quy
+        // Nếu là thư mục → đệ quy (bỏ qua folder notifications)
         if (S_ISDIR(st.st_mode)) {
-            scanDirectoryRecursive(full, out, cache);
+            // Skip notifications folder (check both long name and 8.3 format)
+            std::string name_lower = ToLowerAscii(name_utf8);
+            if (name_lower != "notifications" && 
+                name_lower.find("notifi") == std::string::npos) {  // Skip 8.3 format like NOTIFI~1
+                scanDirectoryRecursive(full, out, cache);
+            }
             continue;
         }
 

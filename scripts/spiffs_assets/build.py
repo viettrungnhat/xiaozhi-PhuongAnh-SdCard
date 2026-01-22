@@ -260,6 +260,90 @@ def process_board_layout(layout_json_file, assets_dir):
         print(f"Error reading/processing layout.json: {e}")
         return []
 
+def process_audio_mp3_files(audio_mp3_dir, assets_dir):
+    """Process audio MP3 files - copy all .mp3 files FLAT to assets directory"""
+    if not audio_mp3_dir or not os.path.exists(audio_mp3_dir):
+        print(f"Warning: Audio MP3 directory not found: {audio_mp3_dir}")
+        return 0
+    
+    mp3_count = 0
+    for root, dirs, files in os.walk(audio_mp3_dir):
+        for file in files:
+            if file.lower().endswith('.mp3'):
+                src_file = os.path.join(root, file)
+                # Flatten: copy all files to root assets_dir without subdirectories
+                dst_file = os.path.join(assets_dir, file)
+                
+                # Check for duplicates
+                if os.path.exists(dst_file):
+                    # Add parent folder prefix to avoid collision
+                    parent_folder = os.path.basename(root)
+                    new_filename = f"{parent_folder}_{file}"
+                    dst_file = os.path.join(assets_dir, new_filename)
+                    print(f"  Collision detected, renaming to: {new_filename}")
+                
+                copy_file(src_file, dst_file)
+                mp3_count += 1
+    
+    print(f"Copied {mp3_count} MP3 audio files (flattened)")
+    return mp3_count
+
+def process_audio_ogg_files(audio_ogg_dir, assets_dir):
+    """Process audio OGG (Ogg Opus) files - copy all .ogg files FLAT to assets directory"""
+    if not audio_ogg_dir or not os.path.exists(audio_ogg_dir):
+        print(f"Warning: Audio OGG directory not found: {audio_ogg_dir}")
+        return 0
+    
+    ogg_count = 0
+    for root, dirs, files in os.walk(audio_ogg_dir):
+        for file in files:
+            if file.lower().endswith('.ogg'):
+                src_file = os.path.join(root, file)
+                # Flatten: copy all files to root assets_dir without subdirectories
+                dst_file = os.path.join(assets_dir, file)
+                
+                # Check for duplicates
+                if os.path.exists(dst_file):
+                    # Add parent folder prefix to avoid collision
+                    parent_folder = os.path.basename(root)
+                    new_filename = f"{parent_folder}_{file}"
+                    dst_file = os.path.join(assets_dir, new_filename)
+                    print(f"  Collision detected, renaming to: {new_filename}")
+                
+                copy_file(src_file, dst_file)
+                ogg_count += 1
+    
+    print(f"Copied {ogg_count} OGG audio files (flattened)")
+    return ogg_count
+
+def process_audio_opus_files(audio_opus_dir, assets_dir):
+    """Process audio Opus files - copy all .opus files FLAT to assets directory"""
+    if not audio_opus_dir or not os.path.exists(audio_opus_dir):
+        print(f"Warning: Audio Opus directory not found: {audio_opus_dir}")
+        return 0
+    
+    opus_count = 0
+    for root, dirs, files in os.walk(audio_opus_dir):
+        for file in files:
+            if file.lower().endswith('.opus'):
+                src_file = os.path.join(root, file)
+                # Flatten: copy all files to root assets_dir without subdirectories
+                dst_file = os.path.join(assets_dir, file)
+                
+                # Check for duplicates
+                if os.path.exists(dst_file):
+                    # Add parent folder prefix to avoid collision
+                    parent_folder = os.path.basename(root)
+                    new_filename = f"{parent_folder}_{file}"
+                    dst_file = os.path.join(assets_dir, new_filename)
+                    print(f"  Collision detected, renaming to: {new_filename}")
+                
+                copy_file(src_file, dst_file)
+                opus_count += 1
+    
+    print(f"Copied {opus_count} Opus audio files (flattened)")
+    return opus_count
+
 def process_board_collection(target_board_dir, res_path, assets_dir):
     """Process board collection - merge icon, emoji, and layout processing"""
     
@@ -316,7 +400,7 @@ def generate_config_json(build_dir, assets_dir):
         "image_file": os.path.join(workspace_dir, "build/output/assets.bin"),
         "lvgl_ver": "9.3.0",
         "assets_size": "0x400000",
-        "support_format": ".png, .gif, .jpg, .bin, .json, .eaf",
+        "support_format": ".png, .gif, .jpg, .bin, .json, .eaf, .mp3, .ogg, .opus",
         "name_length": "32",
         "split_height": "0",
         "support_qoi": False,
@@ -342,7 +426,9 @@ def main():
     parser.add_argument('--wakenet_model', help='Path to wakenet model directory')
     parser.add_argument('--text_font', help='Path to text font file')
     parser.add_argument('--emoji_collection', help='Path to emoji collection directory')
-
+    parser.add_argument('--audio_mp3', help='Path to audio MP3 directory')
+    parser.add_argument('--audio_ogg', help='Path to audio OGG directory')
+    parser.add_argument('--audio_opus', help='Path to audio Opus directory')
     parser.add_argument('--res_path', help='Path to res directory')
     parser.add_argument('--target_board', help='Path to target board directory')
     
@@ -366,6 +452,18 @@ def main():
     # Process each parameter
     srmodels = process_wakenet_model(args.wakenet_model, build_dir, assets_dir)
     text_font = process_text_font(args.text_font, assets_dir)
+    
+    # Process audio MP3 files if provided
+    if args.audio_mp3:
+        process_audio_mp3_files(args.audio_mp3, assets_dir)
+    
+    # Process audio OGG files if provided
+    if args.audio_ogg:
+        process_audio_ogg_files(args.audio_ogg, assets_dir)
+    
+    # Process audio Opus files if provided
+    if args.audio_opus:
+        process_audio_opus_files(args.audio_opus, assets_dir)
 
     if(args.target_board):
         emoji_collection, icon_collection, layout_json = process_board_collection(args.target_board, args.res_path, assets_dir)

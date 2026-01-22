@@ -22,9 +22,10 @@
 #include "canbus/vehicle_assistant.h"
 #include "canbus/relay_controller.h"
 
-// Offline mode and music button
-#include "offline/offline_audio_player.h"
-#include "offline/offline_audio_assets.h"
+// SD Card MP3 Player for 77 Vietnamese alerts
+#include "offline/sd_audio_player.h"
+
+// Music button for SD card control
 #include "offline/music_button.h"
 
 #include <wifi_station.h>
@@ -371,6 +372,18 @@ private:
                 ResetWifiConfiguration();
                 return true;
             });
+        
+        // Tool 4: Test phát âm thanh từ thư mục notifications (cho CAN alerts)
+        // NOTE: Disabled - 77 notification files already on SD card
+        // When connected to Kia Morning 2017 via OBD-II CAN bus, notifications will play AUTOMATICALLY
+        // No MCP tool needed - just connect the vehicle!
+        // TODO: Fix file name matching with FatFS 8.3 format if needed later
+        /*
+        PropertyList notification_props;
+        notification_props.AddProperty(Property("alert_type", kPropertyTypeString, "battery_low"));
+        mcp_server.AddTool("self.audio.test_notification", "Test notifications", notification_props, 
+            [this](const PropertyList& properties) -> bool { return false; });
+        */
     }
 
     // ========================================================================
@@ -399,6 +412,7 @@ private:
     // CAN Bus Initialization for Kia Morning 2017 Si
     // Using SN65HVD230 module connected to GPIO17 (TX) and GPIO8 (RX)
     // ========================================================================
+    // MADE PUBLIC for delayed initialization after SD card mount
     void InitializeCanBus() {
 #ifdef CONFIG_ENABLE_CAN_BUS
         ESP_LOGI(TAG, "========================================");
@@ -442,116 +456,35 @@ private:
             ESP_LOGD(TAG, "Display L%d: %s", line, text.c_str());
         });
         
-        // Start CAN bus driver
-        if (!can_driver.Start()) {
-            ESP_LOGE(TAG, "Failed to start CAN bus driver!");
-            return;
-        }
+        // ⏳ DELAY CAN START - Schedule to start ~15 seconds after boot
+        // This gives the system time to stabilize and SD card to mount
+        xTaskCreate([](void* param) {
+            auto* can_driver_ptr = static_cast<canbus::CanBusDriver*>(param);
+            ESP_LOGI(TAG, "⏳ Waiting 15 seconds before starting CAN bus scanning...");
+            vTaskDelay(pdMS_TO_TICKS(15000));  // Wait ~15 seconds
+            
+            // Start CAN bus driver (begin receiving messages)
+            if (!can_driver_ptr->Start()) {
+                ESP_LOGE(TAG, "Failed to start CAN bus driver!");
+                vTaskDelete(nullptr);
+                return;
+            }
+            
+            ESP_LOGI(TAG, "✅ CAN Bus started! Now listening for vehicle messages...");
+            vTaskDelete(nullptr);
+        }, "can_start_delay", 4096, &can_driver, 3, nullptr);
         
-        // Start vehicle assistant
+        // Start vehicle assistant (keep services ready)
         if (!assistant.Start()) {
             ESP_LOGE(TAG, "Failed to start Vehicle Assistant!");
             return;
         }
         
-        ESP_LOGI(TAG, "CAN Bus and Vehicle Assistant started successfully!");
-        ESP_LOGI(TAG, "Listening for Kia Morning 2017 CAN messages...");
+        ESP_LOGI(TAG, "Vehicle Assistant initialized (CAN scanning will start in ~15s)");
         
-        // Create task to display CAN status and play greeting when connected
-        // Hoạt động cả khi ONLINE và OFFLINE
-        xTaskCreate([](void* param) {
-            auto* board = static_cast<XiaozhiAiIotVietnamBoardLcdSdcard*>(param);
-            
-            // Wait for Application to be fully initialized (10 seconds after boot)
-            vTaskDelay(pdMS_TO_TICKS(10000));
-            
-            // Check CAN connection status every 2 seconds for 60 seconds
-            bool greeted = false;
-            for (int i = 0; i < 30 && !greeted; i++) {
-                auto& can = canbus::CanBusDriver::GetInstance();
-                auto stats = can.GetStats();
-                
-                if (stats.rx_count > 0) {
-                    ESP_LOGI("CAN_STATUS", "✓ CAN kết nối! Nhận %lu messages", stats.rx_count);
-                    
-                    // === PHÁT LỜI CHÀO KHI KẾT NỐI XE ===
-                    auto& app = Application::GetInstance();
-                    
-                    // Phát âm thanh chào mừng (hoạt động cả offline)
-                    app.PlaySound(Lang::Sounds::OGG_SUCCESS);
-                    vTaskDelay(pdMS_TO_TICKS(800));
-                    
-                    // Thử phát lời chào từ offline assets nếu có
-#ifdef CONFIG_ENABLE_OFFLINE_MODE
-                    auto& assets = offline::OfflineAudioAssets::GetInstance();
-                    if (assets.IsInitialized()) {
-                        // Chọn lời chào theo giờ
-                        time_t now = time(nullptr);
-                        struct tm timeinfo;
-                        localtime_r(&now, &timeinfo);
-                        int hour = timeinfo.tm_hour;
-                        
-                        if (hour >= 5 && hour < 12) {
-                            assets.Play("greetings/greeting_morning.opus");
-                        } else if (hour >= 12 && hour < 18) {
-                            assets.Play("greetings/greeting_afternoon.opus");
-                        } else if (hour >= 18 && hour < 22) {
-                            assets.Play("greetings/greeting_evening.opus");
-                        } else {
-                            assets.Play("greetings/greeting_default.opus");
-                        }
-                    }
-#endif
-                    
-                    // Hiển thị lời chào trên LCD
-                    char msg[200];
-                    snprintf(msg, sizeof(msg), 
-                        "✅ Chào bố!\n"
-                        "🚗 Kia Morning 2017 đã kết nối\n"
-                        "📊 Nhận: %lu tin nhắn\n"
-                        "💬 Thử: 'Kiểm tra xăng'",
-                        stats.rx_count);
-                    board->GetDisplay()->SetChatMessage("system", msg);
-                    
-                    greeted = true;
-                    break;
-                }
-                vTaskDelay(pdMS_TO_TICKS(2000));
-            }
-            
-            if (!greeted) {
-                ESP_LOGW("CAN_STATUS", "✗ CAN chưa kết nối - Kiểm tra OBD-II");
-                board->GetDisplay()->SetChatMessage("system", "❌ CAN chưa kết nối\n💡 Kiểm tra OBD-II (Pin 6, 14)\n🚗 Bật xe (ACC/ON)");
-            }
-            
-            vTaskDelay(pdMS_TO_TICKS(10000));  // Show for 10 seconds
-            board->GetDisplay()->SetChatMessage("system", "");  // Clear
-            
-            vTaskDelete(nullptr);
-        }, "can_status", 4096, this, 5, nullptr);
-        
-        // Create task to display SD card status
-        xTaskCreate([](void* param) {
-            auto* board = static_cast<XiaozhiAiIotVietnamBoardLcdSdcard*>(param);
-            
-            // Wait for SD card mount to complete (approximately 11-12 seconds after boot)
-            vTaskDelay(pdMS_TO_TICKS(13000));
-            
-            // Check SD card mount status
-            if (board->IsSdCardMounted()) {
-                ESP_LOGI("SD_STATUS", "✓ SD card mounted successfully");
-                board->GetDisplay()->SetChatMessage("system", "✅ Thẻ nhớ OK\n📁 Sẵn sàng phát nhạc");
-            } else {
-                ESP_LOGW("SD_STATUS", "✗ SD card mount failed");
-                board->GetDisplay()->SetChatMessage("system", "❌ Thẻ nhớ lỗi\n💡 Kiểm tra khe cắm\n🔌 Thử lại sau");
-            }
-            
-            vTaskDelay(pdMS_TO_TICKS(8000));  // Show for 8 seconds
-            board->GetDisplay()->SetChatMessage("system", "");  // Clear
-            
-            vTaskDelete(nullptr);
-        }, "sd_status", 4096, this, 5, nullptr);
-        
+        // Start vehicle data display task
+        StartVehicleDataDisplayTask();
+
         // ========================================================================
         // WiFi Disconnect Monitor - Tự động chuyển offline khi mất WiFi
         // ========================================================================
@@ -696,36 +629,37 @@ private:
     }
 
     // ========================================================================
-    // Offline Audio Player Initialization - Load từ Flash Assets
+    // Vehicle Data Display Task - show engine info when CAN connected
     // ========================================================================
-    void InitializeOfflineAudio() {
-#ifdef CONFIG_ENABLE_OFFLINE_MODE
-        ESP_LOGI(TAG, "========================================");
-        ESP_LOGI(TAG, "Initializing Offline Audio Assets (Flash)");
-        ESP_LOGI(TAG, "========================================");
-        
-        // Khởi tạo offline audio player từ flash assets
-        auto& offline_assets = offline::OfflineAudioAssets::GetInstance();
-        if (offline_assets.Initialize()) {
-            ESP_LOGI(TAG, "Offline Audio Assets ready! %d files from Flash", 
-                     (int)offline_assets.GetAudioFileCount());
-        } else {
-            ESP_LOGW(TAG, "Offline Audio Assets failed to initialize");
-            ESP_LOGI(TAG, "Run: python scripts/flash_audio_assets.py");
-        }
-        
-        // Fallback: thử khởi tạo từ SD card nếu flash không có
-        auto sd_card = GetSdCard();
-        if (!offline_assets.IsInitialized() && sd_card) {
-            ESP_LOGI(TAG, "Trying SD card fallback...");
-            auto& offline_player = offline::OfflineAudioPlayer::GetInstance();
-            if (offline_player.Initialize("/sdcard")) {
-                ESP_LOGI(TAG, "Offline Audio Player (SD) ready! %d files", 
-                         (int)offline_player.GetAudioFileCount());
+    void StartVehicleDataDisplayTask() {
+        xTaskCreate([](void* param) {
+            auto* board = static_cast<XiaozhiAiIotVietnamBoardLcdSdcard*>(param);
+            auto& can = canbus::CanBusDriver::GetInstance();
+            
+            // Wait for CAN status to finish (30s)
+            vTaskDelay(pdMS_TO_TICKS(35000));
+            
+            while (true) {
+                auto stats = can.GetStats();
+                
+                // Only display vehicle data if CAN is connected and receiving messages
+                if (stats.rx_count > 0) {
+                    char vehicle_info[256];
+                    snprintf(vehicle_info, sizeof(vehicle_info),
+                        "🚗 THÔNG TIN XE\n\n"
+                        "📊 CAN: %u tin/s\n"
+                        "🔌 Trạng thái: Hoạt động\n"
+                        "💬 Thử lệnh: bật điều hoà",
+                        (unsigned int)stats.rx_count);
+                    board->GetDisplay()->SetChatMessage("system", vehicle_info);
+                }
+                
+                vTaskDelay(pdMS_TO_TICKS(5000));  // Update every 5 seconds
             }
-        }
-#endif
+        }, "vehicle_data_display", 3072, this, 2, nullptr);
     }
+
+
 
 public:
     XiaozhiAiIotVietnamBoardLcdSdcard() :
@@ -737,12 +671,109 @@ public:
         InitializeButtons();
         InitializeTools();
         InitializeRelays();  // Initialize relay control for trunk, AC
-        InitializeCanBus();  // Initialize CAN bus for Kia Morning 2017
+        // ⚠️ DELAY CAN initialization - SD card needs to mount first (11-14s)
+        // Starting CAN too early causes CPU overload and breaks SD card mount
+        // InitializeCanBus();  // Will be called later after SD card ready
         InitializeMusicButton();  // Initialize music button GPIO3
-        InitializeOfflineAudio(); // Initialize offline audio player
         if (DISPLAY_BACKLIGHT_PIN != GPIO_NUM_NC) {
             GetBacklight()->RestoreBrightness();
         }
+        
+        // Schedule CAN initialization after SD card mount (~15 seconds)
+        xTaskCreate([](void* param) {
+            auto* board = static_cast<XiaozhiAiIotVietnamBoardLcdSdcard*>(param);
+            ESP_LOGI(TAG, "⏳ Waiting for SD card to mount before starting CAN...");
+            vTaskDelay(pdMS_TO_TICKS(15000));  // Wait ~15s for SD card mount + buffer
+            board->InitializeCanBus();  // Now safe to start CAN
+            ESP_LOGI(TAG, "✅ CAN Bus initialization complete");
+            vTaskDelete(nullptr);
+        }, "can_init_delay", 4096, this, 3, nullptr);
+
+        // Schedule SD card mount status display (~13s after boot, show briefly)
+        xTaskCreate([](void* param) {
+            auto* board = static_cast<XiaozhiAiIotVietnamBoardLcdSdcard*>(param);
+
+            vTaskDelay(pdMS_TO_TICKS(13000));
+
+            if (board->IsSdCardMounted()) {
+                ESP_LOGI("SD_STATUS", "✓ SD card mounted successfully");
+                board->GetDisplay()->SetChatMessage("system", "✅ Thẻ nhớ OK\n📁 Sẵn sàng phát nhạc");
+            } else {
+                ESP_LOGW("SD_STATUS", "✗ SD card mount failed");
+                board->GetDisplay()->SetChatMessage("system", "❌ Thẻ nhớ lỗi\n💡 Kiểm tra khe cắm\n🔌 Thử lại sau");
+            }
+
+            vTaskDelay(pdMS_TO_TICKS(3000));
+            board->GetDisplay()->SetChatMessage("system", "");
+            vTaskDelete(nullptr);
+        }, "sd_status", 4096, this, 2, nullptr);
+        
+        // Schedule CAN status display ~15s after startup to allow CAN bus to scan properly.
+        xTaskCreate([](void* param) {
+            auto* board = static_cast<XiaozhiAiIotVietnamBoardLcdSdcard*>(param);
+            auto& app = Application::GetInstance();
+
+            const TickType_t poll_ticks = pdMS_TO_TICKS(200) > 0 ? pdMS_TO_TICKS(200) : 1;
+            int waited_ms = 0;
+            while (!board->IsSdCardMounted() && waited_ms < 30000) {
+                vTaskDelay(poll_ticks);
+                waited_ms += 200;
+            }
+            vTaskDelay(pdMS_TO_TICKS(15000));  // Wait ~15s for CAN bus to start receiving messages
+            
+            // Check CAN connection status
+            auto& can = canbus::CanBusDriver::GetInstance();
+            auto stats = can.GetStats();
+
+            char msg[256];
+            bool connected = (stats.rx_count > 0);
+            if (connected) {
+                ESP_LOGI("CAN_STATUS", "✅ CAN kết nối! Nhận %lu messages", stats.rx_count);
+                app.PlaySound(Lang::Sounds::OGG_SUCCESS);
+                vTaskDelay(pdMS_TO_TICKS(500));
+                snprintf(msg, sizeof(msg),
+                    "✅ ĐÃ KẾT NỐI VỚI XE\n\n"
+                    "🚗 Kia Morning 2017\n"
+                    "📊 Nhận: %lu tin nhắn\n"
+                    "💬 Thử nói lệnh...",
+                    stats.rx_count);
+            } else {
+                ESP_LOGW("CAN_STATUS", "❌ CAN chưa kết nối - Kiểm tra OBD-II");
+                app.PlaySound(Lang::Sounds::OGG_EXCLAMATION);
+                vTaskDelay(pdMS_TO_TICKS(300));
+                app.PlaySound(Lang::Sounds::OGG_EXCLAMATION);
+                vTaskDelay(pdMS_TO_TICKS(500));
+                snprintf(msg, sizeof(msg),
+                    "❌ CHƯA KẾT NỐI VỚI XE\n\n"
+                    "🔌 Kiểm tra OBD-II:\n"
+                    "  • Pin 6: CANH (Dây đỏ)\n"
+                    "  • Pin 14: CANL (Dây đen)\n"
+                    "  • Pin 4/5: GND (Đất)\n\n"
+                    "🚗 Bật xe (ACC/ON)");
+            }
+
+            // Keep the message visible for 30 seconds.
+            // Some other subsystems may call SetChatMessage("system", "") during boot
+            // (which clears the whole chat on LCD), so we refresh once per second.
+            for (int i = 0; i < 30; i++) {
+                // Update stats in real-time to show latest rx_count
+                auto fresh_stats = can.GetStats();
+                if (connected && fresh_stats.rx_count > stats.rx_count) {
+                    snprintf(msg, sizeof(msg),
+                        "✅ ĐÃ KẾT NỐI VỚI XE\n\n"
+                        "🚗 Kia Morning 2017\n"
+                        "📊 Nhận: %lu tin nhắn\n"
+                        "💬 Thử nói lệnh...",
+                        fresh_stats.rx_count);
+                    stats.rx_count = fresh_stats.rx_count;
+                }
+                board->GetDisplay()->SetChatMessage("system", msg);
+                vTaskDelay(pdMS_TO_TICKS(1000));
+            }
+
+            board->GetDisplay()->SetChatMessage("system", "");
+            vTaskDelete(nullptr);
+        }, "can_status_display", 4096, this, 2, nullptr);
     }
 
     virtual Led* GetLed() override {
@@ -801,9 +832,6 @@ public:
             
             GetDisplay()->SetChatMessage("system", "📴 CHẾ ĐỘ OFFLINE\n✅ CAN bus OK\n✅ Nhạc SD OK\n💬 Nói 'Bật online'");
             
-            // Phát lời chào offline
-            PlayOfflineGreeting();
-            
             // Không gọi WifiBoard::StartNetwork() - skip WiFi hoàn toàn
             return;
         }
@@ -812,56 +840,6 @@ public:
         ESP_LOGI(TAG, "📶 CHẾ ĐỘ ONLINE - Kết nối WiFi...");
         WifiBoard::StartNetwork();
     }
-    
-    // Phát lời chào offline từ Flash assets hoặc SD card
-    void PlayOfflineGreeting() {
-#ifdef CONFIG_ENABLE_OFFLINE_MODE
-        ESP_LOGI(TAG, "🔊 Trying to play offline greeting...");
-        
-        auto& assets = offline::OfflineAudioAssets::GetInstance();
-        if (assets.IsInitialized()) {
-            // Chọn lời chào theo giờ
-            time_t now = time(nullptr);
-            struct tm timeinfo;
-            localtime_r(&now, &timeinfo);
-            int hour = timeinfo.tm_hour;
-            
-            std::string greeting_file;
-            if (hour >= 5 && hour < 12) {
-                greeting_file = "greetings/greeting_morning.opus";
-            } else if (hour >= 12 && hour < 18) {
-                greeting_file = "greetings/greeting_afternoon.opus";
-            } else if (hour >= 18 && hour < 22) {
-                greeting_file = "greetings/greeting_evening.opus";
-            } else {
-                greeting_file = "greetings/greeting_default.opus";
-            }
-            
-            ESP_LOGI(TAG, "🎵 Playing: %s (hour=%d)", greeting_file.c_str(), hour);
-            
-            // Thử phát lời chào
-            if (!assets.Play(greeting_file)) {
-                // Fallback to default
-                ESP_LOGW(TAG, "⚠️ %s not found, trying greeting_default.opus", greeting_file.c_str());
-                if (!assets.Play("greetings/greeting_default.opus")) {
-                    ESP_LOGW(TAG, "⚠️ No greeting audio found in assets");
-                    
-                    // List available assets for debugging
-                    ESP_LOGI(TAG, "Available audio files:");
-                    auto files = assets.ListAudioFiles();
-                    for (const auto& file : files) {
-                        ESP_LOGI(TAG, "  - %s", file.c_str());
-                    }
-                }
-            }
-        } else {
-            ESP_LOGW(TAG, "⚠️ Offline assets not initialized");
-        }
-#else
-        ESP_LOGI(TAG, "Offline mode disabled (CONFIG_ENABLE_OFFLINE_MODE not defined)");
-#endif
-    }
-    
     // Kiểm tra đang ở chế độ offline không
     bool IsOfflineMode() const {
         return offline_mode_;

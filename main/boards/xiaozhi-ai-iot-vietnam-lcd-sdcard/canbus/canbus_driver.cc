@@ -111,7 +111,8 @@ bool CanBusDriver::ConfigureTwai(gpio_num_t tx_gpio, gpio_num_t rx_gpio, uint32_
     twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(tx_gpio, rx_gpio, TWAI_MODE_NORMAL);
     g_config.rx_queue_len = CAN_RX_QUEUE_SIZE;
     g_config.tx_queue_len = 10;
-    g_config.alerts_enabled = TWAI_ALERT_ALL;  // Enable all alerts for monitoring
+    // Reduce interrupt load: only enable essential alerts to avoid "No free interrupt inputs" error
+    g_config.alerts_enabled = TWAI_ALERT_RX_DATA | TWAI_ALERT_TX_SUCCESS | TWAI_ALERT_ABOVE_ERR_WARN | TWAI_ALERT_BUS_ERROR;
     g_config.clkout_divider = 0;  // Disable clock output
     
     // Timing configuration based on speed
@@ -533,51 +534,71 @@ void CanBusDriver::ReceiveTask() {
     twai_message_t twai_msg;
     uint32_t alerts;
     int no_msg_counter = 0;
+
+    // Be careful with pdMS_TO_TICKS(1): if tick rate is 100Hz, it becomes 0.
+    // A 0-tick wait makes the loop busy-spin and can starve IDLE tasks (WDT).
+    TickType_t rx_wait_ticks = pdMS_TO_TICKS(10);
+    if (rx_wait_ticks < 1) {
+        rx_wait_ticks = 1;
+    }
+    TickType_t yield_ticks = pdMS_TO_TICKS(1);
+    if (yield_ticks < 1) {
+        yield_ticks = 1;
+    }
     
     while (!stop_requested_.load()) {
-        // Check for alerts (errors, bus events)
-        if (twai_read_alerts(&alerts, pdMS_TO_TICKS(10)) == ESP_OK) {
+        // Check for alerts (errors, bus events) - keep it non-blocking; receive call below will block/yield.
+        if (twai_read_alerts(&alerts, 0) == ESP_OK) {
             if (alerts != 0) {
                 HandleAlerts(alerts);
             }
         }
         
-        // Try to receive a message
-        esp_err_t err = twai_receive(&twai_msg, pdMS_TO_TICKS(50));
+        // Block briefly waiting for a CAN frame to avoid busy-spinning.
+        esp_err_t err = twai_receive(&twai_msg, rx_wait_ticks);
         
         if (err == ESP_OK) {
-            ESP_LOGI(TAG, "📨 RX: ID=0x%03X DLC=%d Data=[%02X %02X %02X %02X %02X %02X %02X %02X]", 
-                     twai_msg.identifier, twai_msg.data_length_code,
-                     twai_msg.data[0], twai_msg.data[1], twai_msg.data[2], twai_msg.data[3],
-                     twai_msg.data[4], twai_msg.data[5], twai_msg.data[6], twai_msg.data[7]);
+            // Silently process each message (no per-message logging to reduce spam)
+            // Individual message logs are disabled - use status check every 2s instead
             ProcessReceivedMessage(twai_msg);
             no_msg_counter = 0;
-        } else if (err != ESP_ERR_TIMEOUT) {
-            ESP_LOGW(TAG, "Receive error: %s (0x%X)", esp_err_to_name(err), err);
-        } else {
+        } else if (err == ESP_ERR_TIMEOUT) {
             no_msg_counter++;
+            // Give other tasks (incl. IDLE) a chance even if rx_wait_ticks collapses on some configs.
+            vTaskDelay(yield_ticks);
+        } else {
+            ESP_LOGW(TAG, "Receive error: %s (0x%X)", esp_err_to_name(err), err);
+            vTaskDelay(yield_ticks);
         }
         
-        // Update status periodically
-        static int update_counter = 0;
-        if (++update_counter >= 100) {  // Every ~5 seconds
-            update_counter = 0;
+        // Update status periodically (time-based: every 2 seconds to reduce spam)
+        static int64_t last_status_log_time = 0;
+        static uint32_t last_logged_rx_count = 0;
+        static bool logged_no_msg_warning = false;
+        int64_t now_ms = esp_timer_get_time() / 1000;
+        
+        if (now_ms - last_status_log_time >= 2000) {  // Every 2 seconds
+            last_status_log_time = now_ms;
             twai_status_info_t status;
             if (twai_get_status_info(&status) == ESP_OK) {
                 UpdateStats(status);
-                // Log CAN bus status every 5 seconds
-                ESP_LOGI(TAG, "🔍 CAN Status: RX=%d TX=%d Error=%d State=%d NoMsg=%d", 
-                         stats_.rx_count, stats_.tx_count, stats_.error_count, 
-                         status.state, no_msg_counter);
-                
-                // Detailed error diagnosis
-                if (no_msg_counter == 500) {  // After ~50 seconds
+                // Only log if RX count has increased (reduce spam)
+                if (stats_.rx_count > last_logged_rx_count) {
+                    ESP_LOGI(TAG, "🔍 CAN Status: RX=%d TX=%d Error=%d State=%d NoMsg=%d", 
+                             stats_.rx_count, stats_.tx_count, stats_.error_count, 
+                             status.state, no_msg_counter);
+                    last_logged_rx_count = stats_.rx_count;
+                } else if (no_msg_counter > 500 && !logged_no_msg_warning) {
+                    ESP_LOGI(TAG, "🔍 CAN Status: RX=%d TX=%d Error=%d State=%d (No CAN bus detected)", 
+                             stats_.rx_count, stats_.tx_count, stats_.error_count, 
+                             status.state);
                     ESP_LOGW(TAG, "⚠️  CAN: No messages received!");
                     ESP_LOGW(TAG, "💡 Hardware checklist:");
                     ESP_LOGW(TAG, "   1) RS pin on SN65HVD230 connected to GND?");
                     ESP_LOGW(TAG, "   2) GPIO17(TX)→CTX, GPIO8(RX)→CRX wiring correct?");
                     ESP_LOGW(TAG, "   3) Engine running and voltage stable?");
                     ESP_LOGW(TAG, "   4) OBD-II pins: 6(CANH), 14(CANL), 4/5(GND)");
+                    logged_no_msg_warning = true;
                 }
             }
         }
@@ -634,7 +655,7 @@ void CanBusDriver::ProcessReceivedMessage(const twai_message_t& twai_msg) {
     last_rx_timestamp_.store(msg.timestamp_ms);
     
     // Update stats
-    if (xSemaphoreTake(stats_mutex_, pdMS_TO_TICKS(10)) == pdTRUE) {
+    if (xSemaphoreTake(stats_mutex_, pdMS_TO_TICKS(5)) == pdTRUE) {
         stats_.rx_count++;
         stats_.last_rx_timestamp = msg.timestamp_ms;
         xSemaphoreGive(stats_mutex_);
@@ -646,8 +667,8 @@ void CanBusDriver::ProcessReceivedMessage(const twai_message_t& twai_msg) {
              msg.data[0], msg.data[1], msg.data[2], msg.data[3],
              msg.data[4], msg.data[5], msg.data[6], msg.data[7]);
     
-    // Call registered callbacks
-    if (xSemaphoreTake(callbacks_mutex_, pdMS_TO_TICKS(50)) == pdTRUE) {
+    // Call registered callbacks with minimal timeout to prevent blocking queue draining
+    if (xSemaphoreTake(callbacks_mutex_, pdMS_TO_TICKS(1)) == pdTRUE) {
         for (auto& callback : callbacks_) {
             if (callback) {
                 callback(msg);

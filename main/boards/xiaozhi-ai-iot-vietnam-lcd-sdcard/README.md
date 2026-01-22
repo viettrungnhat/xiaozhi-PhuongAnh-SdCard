@@ -510,7 +510,7 @@ Dựa trên số Odo đọc được từ CAN bus:
 │  • "Tốc độ bao nhiêu?"                                          │
 │  • "Xăng còn bao nhiêu?" / "Còn đi được bao xa?"                │
 │  • "Nhiệt độ máy bao nhiêu?"                                    │
-│  • "Odo bao nhiêu?" / "Xe đi được bao nhiêu km?"                │
+│  • "Xe đi được bao xa?" / "Odo bao nhiêu?"                     │
 │  • "Điện bình thế nào?"                                         │
 │  • "Có cảnh báo gì không?"                                      │
 │  • "Sức khỏe xe thế nào?"                                       │
@@ -908,15 +908,47 @@ idf.py -p COM3 monitor
 
 ---
 
-## 💡 Mẹo & Best Practices
+## 🧪 Testing & Debugging
 
-### 1. Kiểm tra phần cứng trước khi flash
+### ✨ Giai Đoạn 1: Chuẩn Bị (Bạn chưa cắm xe)
+
+#### 🔊 Test phát âm thanh cảnh báo (MCP Tool)
+
+**Nói với thiết bị:**
+```
+"Test âm thanh pin yếu"
+"Test cảnh báo xăng cạn"
+"Test seatbelt"
+"Test speed 80"
+```
+
+**Hoặc gọi MCP Tool trực tiếp:**
+```json
+Tool: self.audio.test_notification
+Parameters:
+  - alert_type: "battery_low"
+
+Hoặc: "fuel_critical", "warn_door_open", "speed_100", etc.
+```
+
+**Danh sách cảnh báo có thể test:**
+- `battery_low` - ⚠️ Pin yếu
+- `battery_critical` - 🚨 Pin nguy hiểm
+- `fuel_low` - ⚠️ Xăng cạn
+- `fuel_critical` - 🚨 Xăng sắp hết
+- `temp_high` - ⚠️ Nước mát nóng
+- `temp_critical` - 🚨 Nước mát quá nóng
+- `warn_seatbelt` - 🪑 Dây an toàn
+- `warn_door_open` - 🚪 Cửa mở
+- `warn_parking_brake` - 🅿️ Phanh tay
+- `speed_60`, `speed_80`, `speed_100`, `speed_120` - 🛑 Tốc độ giới hạn
+
+#### 📊 Kiểm tra log boot
 
 ```bash
-# Chạy diagnostic
-idf.py -p COM3 monitor
+idf.py monitor
 
-# Bạn sẽ thấy:
+# Tìm dòng quan trọng:
 # ✅ Display initialized
 # ✅ SD Card mounted
 # ✅ CAN Bus initialized
@@ -924,31 +956,110 @@ idf.py -p COM3 monitor
 # ✅ Offline Audio loaded
 ```
 
-### 2. Backup cấu hình WiFi
+### 🚗 Giai Đoạn 2: Cắm vào xe (Khi sẵn sàng)
 
-NVS (Non-Volatile Storage) trên ESP32 lưu WiFi. Khi reset flash:
-- Cấu hình WiFi sẽ **MẤT**
-- Audio assets trong Flash sẽ **LƯU GIỮ** (riêng partition)
+#### 1. Kiểm tra kết nối CAN
+```bash
+# Mở monitor
+idf.py monitor
 
-### 3. Tối ưu hóa pin
-
-```c
-// Trong config.h, tăng timeout để tiết kiệm pin:
-#define CAN_IDLE_TIMEOUT_MS         (10 * 60 * 1000)  // 10 phút thay vì 5
+# Xe khởi động → Xem log:
+I (xxx) CAN_Driver: ✓ Messages received: 12
+I (xxx) Vehicle_Assistant: CAN data updated
 ```
 
-### 4. Test trên xe an toàn
+#### 2. Test tự động (không cần nói)
+- **Khởi động xe** → Hệ thống tự phát greeting
+- **Mở cửa** → Phát: `warn_door_open.mp3`
+- **Bật AC** → Phát: `ac_on.mp3`
+- **Pin yếu** → Phát: `battery_low.mp3`
 
-- **Luôn test trên xe đỗ trước**
-- **KHÔNG** can thiệp CAN Bus khi xe đang chạy
-- **KHÔNG** gửi lệnh CAN không xác định
+#### 3. Xem log cảnh báo
+```
+I (xxx) Vehicle_Assistant: 🚨 Alert: Battery < 10V
+I (xxx) SDMp3Player: 🔊 Playing: /sdcard/notifications/battery_critical.mp3
+```
 
 ---
 
-## 📞 Liên Hệ & Support 0986183806
+## ⚡ Kiến Trúc SD Audio (Cập Nhật Mới)
 
-Nếu gặp vấn đề:
-1. Kiểm tra log: `idf.py -p COM3 monitor`
-2. Xem [WIFI_WORKFLOW_GUIDE.md](../../WIFI_WORKFLOW_GUIDE.md)
-3. Kiểm tra cấu hình trong [config.h](config.h)
-4. Report issue trên GitHub
+### 🎵 Cấu trúc thư mục notifications
+
+```
+/sdcard/notifications/
+├── control/           (5 file)
+│   ├── ac_off.mp3
+│   ├── ac_on.mp3
+│   ├── ready_to_go.mp3
+│   ├── trunk_opened.mp3
+│   └── trunk_opening.mp3
+├── greetings/         (5 file)
+│   ├── goodbye.mp3
+│   ├── greeting_afternoon.mp3
+│   ├── greeting_default.mp3
+│   ├── greeting_evening.mp3
+│   └── greeting_morning.mp3
+├── highway/           (11 file)
+│   ├── highway_mode_off.mp3
+│   ├── highway_mode_on.mp3
+│   ├── rest_reminder.mp3
+│   ├── speed_60.mp3
+│   ├── speed_70.mp3
+│   ├── speed_80.mp3
+│   ├── speed_90.mp3
+│   ├── speed_100.mp3
+│   ├── speed_110.mp3
+│   ├── speed_120.mp3
+│   └── speed_over_limit.mp3
+├── info/              (8 file)
+│   ├── info_battery_prefix.mp3
+│   ├── info_degrees.mp3
+│   ├── info_fuel_prefix.mp3
+│   ├── info_km.mp3
+│   ├── info_percent.mp3
+│   ├── info_speed_prefix.mp3
+│   ├── info_temp_prefix.mp3
+│   └── info_volts.mp3
+├── numbers/           (31 file)
+│   ├── num_0.mp3 → num_20.mp3
+│   ├── num_30.mp3, num_40.mp3, ..., num_90.mp3
+│   ├── num_100.mp3
+│   └── num_point.mp3
+└── warnings/          (17 file)
+    ├── battery_critical.mp3
+    ├── battery_low.mp3
+    ├── fuel_critical.mp3
+    ├── fuel_low.mp3
+    ├── fuel_reserve.mp3
+    ├── maint_general.mp3
+    ├── maint_oil_change.mp3
+    ├── maint_tire_check.mp3
+    ├── temp_critical.mp3
+    ├── temp_high.mp3
+    ├── temp_normal.mp3
+    ├── warn_door_open.mp3
+    ├── warn_lights_on.mp3
+    ├── warn_parking_brake.mp3
+    ├── warn_parking_brake_urgent.mp3
+    ├── warn_seatbelt.mp3
+    └── warn_seatbelt_urgent.mp3
+```
+
+### 📁 Phân biệt rõ ràng
+
+| Folder | Mục đích | Auto Play? | Quét khi shuffle? |
+|--------|---------|-----------|-------------------|
+| `/music/` | Nhạc bình thường | ❌ Thủ công | ✅ **CÓ** |
+| `/notifications/` | Cảnh báo CAN | ✅ Tự động | ❌ **KHÔNG** |
+
+### 🔒 Bảo vệ Notifications
+
+```cpp
+// Trong esp32_sd_music.cc - Line 872
+if (name_lower != "notifications" && 
+    name_lower.find("notifi") == std::string::npos) {  // Skip 8.3 format
+    scanDirectoryRecursive(full, out, cache);  // Chỉ quét Music
+}
+```
+
